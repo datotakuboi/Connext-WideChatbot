@@ -18,54 +18,66 @@ from langchain.prompts import PromptTemplate
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
-    try:
-        cred = credentials.Certificate({
-            "type": st.secrets["service_account"]["type"],
-            "project_id": st.secrets["service_account"]["project_id"],
-            "private_key_id": st.secrets["service_account"]["private_key_id"],
-            "private_key": st.secrets["service_account"]["private_key"].replace("\\n", "\n"),
-            "client_email": st.secrets["service_account"]["client_email"],
-            "client_id": st.secrets["service_account"]["client_id"],
-            "auth_uri": st.secrets["service_account"]["auth_uri"],
-            "token_uri": st.secrets["service_account"]["token_uri"],
-            "auth_provider_x509_cert_url": st.secrets["service_account"]["auth_provider_x509_cert_url"],
-            "client_x509_cert_url": st.secrets["service_account"]["client_x509_cert_url"]
-        })
-        firebase_admin.initialize_app(cred)
-    except ValueError as e:
-        st.error(f"Failed to initialize Firebase: {e}")
-        st.stop()
+    cred = credentials.Certificate(st.secrets["service_account"])
+    firebase_admin.initialize_app(cred)
 
 # Function to download file to a temporary directory
 def download_file_to_temp(url):
-    try:
-        storage_client = storage.Client.from_service_account_info({
-            "type": st.secrets["service_account"]["type"],
-            "project_id": st.secrets["service_account"]["project_id"],
-            "private_key_id": st.secrets["service_account"]["private_key_id"],
-            "private_key": st.secrets["service_account"]["private_key"].replace("\\n", "\n"),
-            "client_email": st.secrets["service_account"]["client_email"],
-            "client_id": st.secrets["service_account"]["client_id"],
-            "auth_uri": st.secrets["service_account"]["auth_uri"],
-            "token_uri": st.secrets["service_account"]["token_uri"],
-            "auth_provider_x509_cert_url": st.secrets["service_account"]["auth_provider_x509_cert_url"],
-            "client_x509_cert_url": st.secrets["service_account"]["client_x509_cert_url"]
-        })
-        bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
-        temp_dir = tempfile.mkdtemp()
+    storage_client = storage.Client.from_service_account_info(st.secrets["service_account"])
+    bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
+    temp_dir = tempfile.mkdtemp()
 
-        parsed_url = urlparse(url)
-        file_name = os.path.basename(unquote(parsed_url.path))
-        blob = bucket.blob(file_name)
-        temp_file_path = os.path.join(temp_dir, file_name)
-        blob.download_to_filename(temp_file_path)
+    parsed_url = urlparse(url)
+    file_name = os.path.basename(unquote(parsed_url.path))
+    blob = bucket.blob(file_name)
+    temp_file_path = os.path.join(temp_dir, file_name)
+    blob.download_to_filename(temp_file_path)
 
-        return temp_file_path, file_name
-    except Exception as e:
-        st.error(f"Error downloading file: {e}")
-        return None, None
+    return temp_file_path, file_name
 
-# Other functions remain unchanged
+# Function to extract text from PDFs
+def get_pdf_text(pdf_docs):
+    text = ""
+    for pdf in pdf_docs:
+        extracted_text = extract_text(pdf)
+        text += extracted_text
+    return text
+
+# Function to split text into chunks
+def get_text_chunks(text):
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
+    chunks = text_splitter.split_text(text)
+    return chunks
+
+# Function to create vector store
+def get_vector_store(text_chunks, api_key):
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
+    vector_store.save_local("faiss_index")
+
+# Function to create conversational chain
+def get_conversational_chain(api_key):
+    prompt_template = """
+    Answer the question as detailed as possible from the provided context, make sure to provide all the details, if the answer is not in
+    provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
+    Context:\n {context}?\n
+    Question: \n{question}\n
+
+    Answer:
+    """
+    model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.5, google_api_key=api_key)
+    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+    return chain
+
+# Function to process user input
+def user_input(user_question, api_key):
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+    docs = new_db.similarity_search(user_question)
+    chain = get_conversational_chain(api_key)
+    response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
+    st.write("Reply:\n\n", response["output_text"])
 
 # Main app function
 def app():
@@ -80,12 +92,8 @@ def app():
         return
 
     # Get firestore client
-    try:
-        firestore_db = firestore.client()
-        st.session_state.db = firestore_db
-    except Exception as e:
-        st.error(f"Error initializing Firestore: {e}")
-        return
+    firestore_db = firestore.client()
+    st.session_state.db = firestore_db
 
     # Center the logo image
     col1, col2, col3 = st.columns([3, 4, 3])
@@ -122,11 +130,10 @@ def app():
             with st.expander(retriever_name):
                 st.markdown(f"**Description:** {retriever_description}")
                 file_path, file_name = download_file_to_temp(retriever['document'])  # Get the document file path and file name
-                if file_path and file_name:
-                    st.markdown(f"_**File Name**_: {file_name}")
-                    st.markdown(f"[Download PDF](https://{retriever['document']})", unsafe_allow_html=True)
-                    retriever["file_path"] = file_path
-                    st.session_state["retrievers"][retriever_name] = retriever  # Populate the retriever dictionary
+                st.markdown(f"_**File Name**_: {file_name}")
+                st.markdown(f"[Download PDF](https://{retriever['document']})", unsafe_allow_html=True)
+                retriever["file_path"] = file_path
+                st.session_state["retrievers"][retriever_name] = retriever  # Populate the retriever dictionary
         st.title("PDF Retriever Selection:")
         st.session_state["selected_retrievers"] = st.multiselect("Select Retrievers", list(st.session_state["retrievers"].keys()))
 
