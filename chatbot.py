@@ -15,41 +15,21 @@ from langchain.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
+import datetime
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["service_account"])
     firebase_admin.initialize_app(cred)
 
-# Function to download file to a temporary directory
-def download_file_to_temp(url):
-    try:
-        storage_client = storage.Client.from_service_account_info(st.secrets["service_account"])
-        bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
-        temp_dir = tempfile.mkdtemp()
+# Function to generate a signed URL for a file
+def generate_signed_url(bucket_name, blob_name, service_account_info, expiration=3600):
+    storage_client = storage.Client.from_service_account_info(service_account_info)
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
 
-        parsed_url = urlparse(url)
-        file_name = os.path.basename(unquote(parsed_url.path))
-        blob = bucket.blob(file_name)
-        
-        temp_file_path = os.path.join(temp_dir, file_name)
-        
-        # Log the file path and bucket name
-        st.write(f"Downloading {file_name} from bucket {bucket.name} to {temp_file_path}")
-        
-        # Check if the blob exists
-        if not blob.exists():
-            st.error(f"The file {file_name} does not exist in the bucket.")
-            return None, None
-        
-        # Download the blob to the local file
-        blob.download_to_filename(temp_file_path)
-        st.write(f"Downloaded {file_name} to {temp_file_path}")
-
-        return temp_file_path, file_name
-    except Exception as e:
-        st.error(f"Failed to download file: {e}")
-        return None, None
+    url = blob.generate_signed_url(expiration=datetime.timedelta(seconds=expiration))
+    return url
 
 # Function to extract text from PDFs
 def get_pdf_text(pdf_docs):
@@ -145,20 +125,25 @@ def app():
             retriever_description = retriever['retriever_description']
             with st.expander(retriever_name):
                 st.markdown(f"**Description:** {retriever_description}")
-                file_path, file_name = download_file_to_temp(retriever['document'])  # Get the document file path and file name
-                if file_path and file_name:
-                    st.markdown(f"_**File Name**_: {file_name}")
-                    retriever["file_path"] = file_path
-                    st.session_state["retrievers"][retriever_name] = retriever  # Populate the retriever dictionary
-                else:
-                    st.error(f"Failed to download the document for {retriever_name}.")
+
+                # Generate signed URL for the document
+                parsed_url = urlparse(retriever['document'])
+                file_name = os.path.basename(unquote(parsed_url.path))
+                signed_url = generate_signed_url('connext-chatbot-admin.appspot.com', file_name, st.secrets["service_account"])
+
+                st.markdown(f"_**File Name**_: {file_name}")
+                st.markdown(f"[Download PDF]({signed_url})", unsafe_allow_html=True)
+
+                retriever["signed_url"] = signed_url
+                st.session_state["retrievers"][retriever_name] = retriever  # Populate the retriever dictionary
+
         st.title("PDF Retriever Selection:")
         st.session_state["selected_retrievers"] = st.multiselect("Select Retrievers", list(st.session_state["retrievers"].keys()))
 
         if st.button("Submit & Process", key="process_button"):
             if google_ai_api_key:
                 with st.spinner("Processing..."):
-                    selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
+                    selected_files = [st.session_state["retrievers"][name]["signed_url"] for name in st.session_state["selected_retrievers"]]
                     raw_text = get_pdf_text(selected_files)
                     text_chunks = get_text_chunks(raw_text)
                     get_vector_store(text_chunks, google_ai_api_key)
