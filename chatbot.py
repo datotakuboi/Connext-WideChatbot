@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import firebase_admin
-from firebase_admin import firestore
+from firebase_admin import firestore, auth
 from google.cloud import storage
 from firebase_admin import credentials
 from urllib.parse import urlparse, unquote
@@ -28,7 +28,6 @@ def generate_signed_url(bucket_name, blob_name, service_account_info, expiration
     storage_client = storage.Client.from_service_account_info(service_account_info)
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
-
     url = blob.generate_signed_url(expiration=datetime.timedelta(seconds=expiration))
     return url
 
@@ -38,7 +37,6 @@ def download_file_from_url(url):
         temp_dir = tempfile.mkdtemp()
         file_name = os.path.basename(urlparse(url).path)
         temp_file_path = os.path.join(temp_dir, file_name)
-
         response = requests.get(url, stream=True)
         if response.status_code == 200:
             with open(temp_file_path, 'wb') as file:
