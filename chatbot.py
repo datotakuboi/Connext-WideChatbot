@@ -23,17 +23,21 @@ if not firebase_admin._apps:
 
 # Function to download file to a temporary directory
 def download_file_to_temp(url):
-    storage_client = storage.Client.from_service_account_info(st.secrets["service_account"])
-    bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
-    temp_dir = tempfile.mkdtemp()
+    try:
+        storage_client = storage.Client.from_service_account_info(st.secrets["service_account"])
+        bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
+        temp_dir = tempfile.mkdtemp()
 
-    parsed_url = urlparse(url)
-    file_name = os.path.basename(unquote(parsed_url.path))
-    blob = bucket.blob(file_name)
-    temp_file_path = os.path.join(temp_dir, file_name)
-    blob.download_to_filename(temp_file_path)
+        parsed_url = urlparse(url)
+        file_name = os.path.basename(unquote(parsed_url.path))
+        blob = bucket.blob(file_name)
+        temp_file_path = os.path.join(temp_dir, file_name)
+        blob.download_to_filename(temp_file_path)
 
-    return temp_file_path, file_name
+        return temp_file_path, file_name
+    except Exception as e:
+        st.error(f"Failed to download file: {e}")
+        return None, None
 
 # Function to extract text from PDFs
 def get_pdf_text(pdf_docs):
@@ -130,10 +134,13 @@ def app():
             with st.expander(retriever_name):
                 st.markdown(f"**Description:** {retriever_description}")
                 file_path, file_name = download_file_to_temp(retriever['document'])  # Get the document file path and file name
-                st.markdown(f"_**File Name**_: {file_name}")
-                st.markdown(f"[Download PDF](https://{retriever['document']})", unsafe_allow_html=True)
-                retriever["file_path"] = file_path
-                st.session_state["retrievers"][retriever_name] = retriever  # Populate the retriever dictionary
+                if file_path and file_name:
+                    st.markdown(f"_**File Name**_: {file_name}")
+                    st.markdown(f"[Download PDF](https://{retriever['document']})", unsafe_allow_html=True)
+                    retriever["file_path"] = file_path
+                    st.session_state["retrievers"][retriever_name] = retriever  # Populate the retriever dictionary
+                else:
+                    st.error(f"Failed to download the document for {retriever_name}.")
         st.title("PDF Retriever Selection:")
         st.session_state["selected_retrievers"] = st.multiselect("Select Retrievers", list(st.session_state["retrievers"].keys()))
 
