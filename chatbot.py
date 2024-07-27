@@ -16,6 +16,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 import datetime
+import requests
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
@@ -31,10 +32,30 @@ def generate_signed_url(bucket_name, blob_name, service_account_info, expiration
     url = blob.generate_signed_url(expiration=datetime.timedelta(seconds=expiration))
     return url
 
+# Function to download file from URL to a temporary directory
+def download_file_from_url(url):
+    try:
+        temp_dir = tempfile.mkdtemp()
+        file_name = os.path.basename(urlparse(url).path)
+        temp_file_path = os.path.join(temp_dir, file_name)
+
+        response = requests.get(url, stream=True)
+        if response.status_code == 200:
+            with open(temp_file_path, 'wb') as file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    file.write(chunk)
+            return temp_file_path, file_name
+        else:
+            st.error(f"Failed to download file: {response.status_code}")
+            return None, None
+    except Exception as e:
+        st.error(f"Failed to download file: {e}")
+        return None, None
+
 # Function to extract text from PDFs
-def get_pdf_text(pdf_docs):
+def get_pdf_text(pdf_files):
     text = ""
-    for pdf in pdf_docs:
+    for pdf in pdf_files:
         extracted_text = extract_text(pdf)
         text += extracted_text
     return text
@@ -143,8 +164,15 @@ def app():
         if st.button("Submit & Process", key="process_button"):
             if google_ai_api_key:
                 with st.spinner("Processing..."):
-                    selected_files = [st.session_state["retrievers"][name]["signed_url"] for name in st.session_state["selected_retrievers"]]
-                    raw_text = get_pdf_text(selected_files)
+                    selected_retrievers = st.session_state["selected_retrievers"]
+                    downloaded_files = []
+                    for name in selected_retrievers:
+                        signed_url = st.session_state["retrievers"][name]["signed_url"]
+                        file_path, _ = download_file_from_url(signed_url)
+                        if file_path:
+                            downloaded_files.append(file_path)
+                    
+                    raw_text = get_pdf_text(downloaded_files)
                     text_chunks = get_text_chunks(raw_text)
                     get_vector_store(text_chunks, google_ai_api_key)
                     st.success("Processing complete.")
