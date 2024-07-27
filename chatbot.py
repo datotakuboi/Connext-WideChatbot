@@ -31,8 +31,20 @@ def download_file_to_temp(url):
         parsed_url = urlparse(url)
         file_name = os.path.basename(unquote(parsed_url.path))
         blob = bucket.blob(file_name)
+        
         temp_file_path = os.path.join(temp_dir, file_name)
+        
+        # Log the file path and bucket name
+        st.write(f"Downloading {file_name} from bucket {bucket.name} to {temp_file_path}")
+        
+        # Check if the blob exists
+        if not blob.exists():
+            st.error(f"The file {file_name} does not exist in the bucket.")
+            return None, None
+        
+        # Download the blob to the local file
         blob.download_to_filename(temp_file_path)
+        st.write(f"Downloaded {file_name} to {temp_file_path}")
 
         return temp_file_path, file_name
     except Exception as e:
@@ -136,7 +148,6 @@ def app():
                 file_path, file_name = download_file_to_temp(retriever['document'])  # Get the document file path and file name
                 if file_path and file_name:
                     st.markdown(f"_**File Name**_: {file_name}")
-                    st.markdown(f"[Download PDF](https://{retriever['document']})", unsafe_allow_html=True)
                     retriever["file_path"] = file_path
                     st.session_state["retrievers"][retriever_name] = retriever  # Populate the retriever dictionary
                 else:
