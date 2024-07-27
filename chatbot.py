@@ -56,7 +56,7 @@ def get_pdf_text(pdf_files):
     for pdf in pdf_files:
         try:
             extracted_text = extract_text(pdf)
-            text += extracted_text
+            text += f"\n\n---\n\n{extracted_text}"  # Add separators between documents
             st.write(f"Extracted text from {pdf}: {extracted_text[:200]}...")  # Log extracted text snippet
         except Exception as e:
             st.error(f"Error extracting text from {pdf}: {e}")
