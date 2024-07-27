@@ -15,17 +15,13 @@ from langchain.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
-from functools import partial
-import mimetypes
-import datetime
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["service_account"])
     firebase_admin.initialize_app(cred)
 
-### Functions: Start ###
-
+# Function to download file to a temporary directory
 def download_file_to_temp(url):
     storage_client = storage.Client.from_service_account_info(st.secrets["service_account"])
     bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
@@ -33,97 +29,11 @@ def download_file_to_temp(url):
 
     parsed_url = urlparse(url)
     file_name = os.path.basename(unquote(parsed_url.path))
-
     blob = bucket.blob(file_name)
     temp_file_path = os.path.join(temp_dir, file_name)
     blob.download_to_filename(temp_file_path)
 
     return temp_file_path, file_name
-
-def update_file(file, retriever):
-    if file is not None:
-        storage_client = storage.Client.from_service_account_info(st.secrets["service_account"])
-        bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
-
-        old_file_url = retriever['document']
-        old_file_path = urlparse(old_file_url).path
-        old_file_name = os.path.basename(unquote(old_file_path))
-        old_blob = bucket.blob(old_file_name)
-
-        if old_blob.exists():
-            old_blob.delete()
-
-        file_path = file.name
-        new_blob = bucket.blob(file_path)
-        
-        mime_type, _ = mimetypes.guess_type(file_path)
-        if mime_type is None:
-            mime_type = 'application/pdf'
-        
-        new_blob.upload_from_file(file, content_type=mime_type)
-        download_url = new_blob.generate_signed_url(datetime.timedelta(seconds=300), method='GET')
-
-        retriever['document'] = download_url
-        st.session_state.db.collection('Retrievers').document(retriever['id']).update({'document': download_url})
-        st.session_state["retrievers"][retriever['retriever_name']]['file_name'] = file_path
-        st.session_state["retrievers"][retriever['retriever_name']]['document'] = download_url
-
-    else:
-        st.error("No file was selected to update.")
-
-@st.experimental_memo
-def delete_retriever(retriever):
-    retriever_name = retriever['retriever_name']
-    storage_client = storage.Client.from_service_account_info(st.secrets["service_account"])
-    bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
-
-    doc_id = retriever['id']
-    document_url = retriever['document']
-
-    file_path = urlparse(document_url).path
-    file_name = os.path.basename(unquote(file_path))
-    blob = bucket.blob(file_name)
-
-    if blob.exists():
-        blob.delete()
-
-    st.session_state.db.collection('Retrievers').document(doc_id).delete()
-    del st.session_state["retrievers"][retriever_name]
-
-@st.experimental_memo
-def add_retriever(name, description, file):
-    storage_client = storage.Client.from_service_account_info(st.secrets["service_account"])
-    bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
-
-    file_path = file.name
-    new_blob = bucket.blob(file_path)
-
-    mime_type, _ = mimetypes.guess_type(file_path)
-    if mime_type is None:
-        mime_type = 'application/pdf'
-
-    new_blob.upload_from_file(file, content_type=mime_type)
-    download_url = new_blob.generate_signed_url(datetime.timedelta(seconds=300), method='GET')
-
-    retriever_data = {
-        'retriever_name': name,
-        'retriever_description': description,
-        'document': download_url
-    }
-    doc_ref = st.session_state.db.collection('Retrievers').add(retriever_data)
-    retriever_data['id'] = doc_ref[1].id
-    st.session_state["retrievers"][name] = retriever_data
-
-@st.experimental_memo
-def update_description(retriever, new_description):
-    st.session_state.db.collection('Retrievers').document(retriever['id']).update({'retriever_description': new_description})
-    st.session_state["retrievers"][retriever['retriever_name']]['retriever_description'] = new_description
-
-@st.experimental_memo
-def update_name(retriever, new_name):
-    st.session_state.db.collection('Retrievers').document(retriever['id']).update({'retriever_name': new_name})
-    st.session_state["retrievers"][new_name] = st.session_state["retrievers"].pop(retriever['retriever_name'])
-    st.session_state["retrievers"][new_name]['retriever_name'] = new_name
 
 # Function to extract text from PDFs
 def get_pdf_text(pdf_docs):
@@ -224,19 +134,6 @@ def app():
                 st.markdown(f"[Download PDF](https://{retriever['document']})", unsafe_allow_html=True)
                 retriever["file_path"] = file_path
                 st.session_state["retrievers"][retriever_name] = retriever  # Populate the retriever dictionary
-                if st.button("Edit Document Name", key=f"{retriever_name}_retriever_name_editor"):
-                    new_name = st.text_input("Retriever Name", value=retriever["retriever_name"], key=f"name_{retriever['retriever_name']}")
-                    if st.button("Update", key=f"update_name_button_{retriever['retriever_name']}"):
-                        update_name(retriever, new_name)
-                if st.button("Delete Document", key=f"{retriever_name}_retriever_delete"):
-                    delete_retriever(retriever)
-                if st.button("Edit Description", key=f"{retriever_name}_retriever_description_editor"):
-                    new_description = st.text_area("Document Description", height=300, value=retriever["retriever_description"], key=f"description_{retriever['retriever_name']}")
-                    if st.button("Update", key=f"update_desc_button_{retriever['retriever_name']}"):
-                        update_description(retriever, new_description)
-                updated_doc = st.file_uploader("Upload Chatbot Document", accept_multiple_files=False, type=["pdf", "doc", "docx"], key=f"{retriever_name}_file_uploader")
-                if st.button("Update File", key=f"{retriever_name}_file_update_button"):
-                    update_file(updated_doc, retriever)
         st.title("PDF Retriever Selection:")
         st.session_state["selected_retrievers"] = st.multiselect("Select Retrievers", list(st.session_state["retrievers"].keys()))
 
@@ -253,19 +150,6 @@ def app():
 
     if user_question and google_ai_api_key:
         user_input(user_question, google_ai_api_key)
-
-    if st.button("Add New Document"):
-        name = st.text_input("Document Name", key="new_retriever")
-        description = st.text_area("Document Description", height=300)
-        file = st.file_uploader("Upload Chatbot Document", accept_multiple_files=False, type=["pdf", "doc", "docx"])
-
-        if st.button("Submit", key="submit_new_retriever"):
-            if name and description and file:
-                add_retriever(name, description, file)
-                st.success("New Document Added Successfully")
-                st.rerun()
-            else:
-                st.error("Please fill all fields to add a new document.")
 
 if __name__ == "__main__":
     app()
