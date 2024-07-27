@@ -28,7 +28,6 @@ def generate_signed_url(bucket_name, blob_name, service_account_info, expiration
     storage_client = storage.Client.from_service_account_info(service_account_info)
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
-
     url = blob.generate_signed_url(expiration=datetime.timedelta(seconds=expiration))
     return url
 
@@ -44,6 +43,7 @@ def download_file_from_url(url):
             with open(temp_file_path, 'wb') as file:
                 for chunk in response.iter_content(chunk_size=8192):
                     file.write(chunk)
+            st.write(f"Downloaded file: {file_name} to {temp_file_path}")
             return temp_file_path, file_name
         else:
             st.error(f"Failed to download file: {response.status_code}")
@@ -56,45 +56,71 @@ def download_file_from_url(url):
 def get_pdf_text(pdf_files):
     text = ""
     for pdf in pdf_files:
-        extracted_text = extract_text(pdf)
-        text += extracted_text
+        try:
+            st.write(f"Extracting text from: {pdf}")
+            extracted_text = extract_text(pdf)
+            text += f"\n\n---\n\n{extracted_text}"  # Add separators between documents
+            st.write(f"Extracted text from {pdf[:200]}...")  # Log extracted text snippet
+        except Exception as e:
+            st.error(f"Error extracting text from {pdf}: {e}")
     return text
 
 # Function to split text into chunks
 def get_text_chunks(text):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
-    chunks = text_splitter.split_text(text)
-    return chunks
+    try:
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
+        chunks = text_splitter.split_text(text)
+        st.write(f"Text chunks: {chunks[:5]}...")  # Log text chunks snippet
+        return chunks
+    except Exception as e:
+        st.error(f"Error splitting text into chunks: {e}")
+        return []
 
 # Function to create vector store
 def get_vector_store(text_chunks, api_key):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
-    vector_store.save_local("faiss_index")
+    try:
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+        vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
+        vector_store.save_local("faiss_index")
+        st.write("Vector store created and saved locally.")  # Log vector store creation
+    except Exception as e:
+        st.error(f"Error creating vector store: {e}")
 
 # Function to create conversational chain
 def get_conversational_chain(api_key):
-    prompt_template = """
-    Answer the question as detailed as possible from the provided context, make sure to provide all the details, if the answer is not in
-    provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
-    Context:\n {context}?\n
-    Question: \n{question}\n
+    try:
+        prompt_template = """
+        Answer the question as detailed as possible from the provided context, make sure to provide all the details, if the answer is not in
+        provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
+        Context:\n {context}?\n
+        Question: \n{question}\n
 
-    Answer:
-    """
-    model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.5, google_api_key=api_key)
-    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
-    return chain
+        Answer:
+        """
+        model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.5, google_api_key=api_key)
+        prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+        chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+        return chain
+    except Exception as e:
+        st.error(f"Error creating conversational chain: {e}")
+        return None
 
 # Function to process user input
 def user_input(user_question, api_key):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-    docs = new_db.similarity_search(user_question)
-    chain = get_conversational_chain(api_key)
-    response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
-    st.write("Reply:\n\n", response["output_text"])
+    try:
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+        new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+        docs = new_db.similarity_search(user_question)
+        st.write(f"Documents retrieved for the query: {docs}")  # Log retrieved documents
+        chain = get_conversational_chain(api_key)
+        if chain:
+            response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
+            return response["output_text"]
+        else:
+            return "An error occurred while processing your request."
+    except Exception as e:
+        st.error(f"Error processing user input: {e}")
+        return "An error occurred while processing your request."
 
 # Main app function
 def app():
@@ -168,19 +194,30 @@ def app():
                     downloaded_files = []
                     for name in selected_retrievers:
                         signed_url = st.session_state["retrievers"][name]["signed_url"]
-                        file_path, _ = download_file_from_url(signed_url)
+                        file_path, file_name = download_file_from_url(signed_url)
                         if file_path:
+                            st.write(f"Downloaded file: {file_name} to {file_path}")
                             downloaded_files.append(file_path)
                     
                     raw_text = get_pdf_text(downloaded_files)
+                    st.write("Extracted text:")
+                    st.write(raw_text[:500])  # Show the first 500 characters of the extracted text for debugging
+                    
                     text_chunks = get_text_chunks(raw_text)
+                    st.write("Text chunks:")
+                    st.write(text_chunks[:5])  # Show the first 5 chunks for debugging
+                    
                     get_vector_store(text_chunks, google_ai_api_key)
                     st.success("Processing complete.")
             else:
                 st.error("Google API key is missing. Please provide it in the secrets configuration.")
 
     if user_question and google_ai_api_key:
-        user_input(user_question, google_ai_api_key)
+        response_text = user_input(user_question, google_ai_api_key)
+        if response_text:
+            st.write("Reply:\n\n", response_text)
+        else:
+            st.write("This question cannot be answered from the given context.")
 
 if __name__ == "__main__":
     app()
