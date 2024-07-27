@@ -92,7 +92,7 @@ def user_input(user_question, api_key):
     docs = new_db.similarity_search(user_question)
     chain = get_conversational_chain(api_key)
     response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
-    st.write("Reply:\n\n", response["output_text"])
+    return response["output_text"]
 
 # Main app function
 def app():
@@ -171,14 +171,24 @@ def app():
                             downloaded_files.append(file_path)
                     
                     raw_text = get_pdf_text(downloaded_files)
+                    st.write("Extracted text:")
+                    st.write(raw_text)  # Debug: Show the extracted text
+                    
                     text_chunks = get_text_chunks(raw_text)
+                    st.write("Text chunks:")
+                    st.write(text_chunks)  # Debug: Show the text chunks
+                    
                     get_vector_store(text_chunks, google_ai_api_key)
                     st.success("Processing complete.")
             else:
                 st.error("Google API key is missing. Please provide it in the secrets configuration.")
 
     if user_question and google_ai_api_key:
-        user_input(user_question, google_ai_api_key)
+        response_text = user_input(user_question, google_ai_api_key)
+        if response_text:
+            st.write("Reply:\n\n", response_text)
+        else:
+            st.write("This question cannot be answered from the given context.")
 
 if __name__ == "__main__":
     app()
