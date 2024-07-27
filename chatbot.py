@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import firebase_admin
-from firebase_admin import firestore, auth
+from firebase_admin import firestore
 from google.cloud import storage
 from firebase_admin import credentials
 from urllib.parse import urlparse, unquote
@@ -16,7 +16,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 import datetime
-import requests
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
@@ -28,45 +27,22 @@ def generate_signed_url(bucket_name, blob_name, service_account_info, expiration
     storage_client = storage.Client.from_service_account_info(service_account_info)
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
+
     url = blob.generate_signed_url(expiration=datetime.timedelta(seconds=expiration))
     return url
 
-# Function to download file from URL to a temporary directory
-def download_file_from_url(url):
-    try:
-        temp_dir = tempfile.mkdtemp()
-        file_name = os.path.basename(urlparse(url).path)
-        temp_file_path = os.path.join(temp_dir, file_name)
-        response = requests.get(url, stream=True)
-        if response.status_code == 200:
-            with open(temp_file_path, 'wb') as file:
-                for chunk in response.iter_content(chunk_size=8192):
-                    file.write(chunk)
-            return temp_file_path, file_name
-        else:
-            st.error(f"Failed to download file: {response.status_code}")
-            return None, None
-    except Exception as e:
-        st.error(f"Failed to download file: {e}")
-        return None, None
-
 # Function to extract text from PDFs
-def get_pdf_text(pdf_files):
+def get_pdf_text(pdf_docs):
     text = ""
-    for pdf in pdf_files:
-        try:
-            extracted_text = extract_text(pdf)
-            text += f"\n\n---\n\n{extracted_text}"  # Add separators between documents
-            st.write(f"Extracted text from {pdf}: {extracted_text[:200]}...")  # Log extracted text snippet
-        except Exception as e:
-            st.error(f"Error extracting text from {pdf}: {e}")
+    for pdf in pdf_docs:
+        extracted_text = extract_text(pdf)
+        text += extracted_text
     return text
 
 # Function to split text into chunks
 def get_text_chunks(text):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
     chunks = text_splitter.split_text(text)
-    st.write(f"Text chunks: {chunks[:5]}...")  # Log text chunks snippet
     return chunks
 
 # Function to create vector store
@@ -74,7 +50,6 @@ def get_vector_store(text_chunks, api_key):
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
-    st.write("Vector store created and saved locally.")  # Log vector store creation
 
 # Function to create conversational chain
 def get_conversational_chain(api_key):
@@ -93,17 +68,12 @@ def get_conversational_chain(api_key):
 
 # Function to process user input
 def user_input(user_question, api_key):
-    try:
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-        new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-        docs = new_db.similarity_search(user_question)
-        st.write(f"Documents retrieved for the query: {docs}")  # Log retrieved documents
-        chain = get_conversational_chain(api_key)
-        response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
-        return response["output_text"]
-    except Exception as e:
-        st.error(f"Error processing user input: {e}")
-        return "An error occurred while processing your request."
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+    docs = new_db.similarity_search(user_question)
+    chain = get_conversational_chain(api_key)
+    response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
+    st.write("Reply:\n\n", response["output_text"])
 
 # Main app function
 def app():
@@ -173,33 +143,16 @@ def app():
         if st.button("Submit & Process", key="process_button"):
             if google_ai_api_key:
                 with st.spinner("Processing..."):
-                    selected_retrievers = st.session_state["selected_retrievers"]
-                    downloaded_files = []
-                    for name in selected_retrievers:
-                        signed_url = st.session_state["retrievers"][name]["signed_url"]
-                        file_path, _ = download_file_from_url(signed_url)
-                        if file_path:
-                            downloaded_files.append(file_path)
-                    
-                    raw_text = get_pdf_text(downloaded_files)
-                    st.write("Extracted text:")
-                    st.write(raw_text)  # Debug: Show the extracted text
-                    
+                    selected_files = [st.session_state["retrievers"][name]["signed_url"] for name in st.session_state["selected_retrievers"]]
+                    raw_text = get_pdf_text(selected_files)
                     text_chunks = get_text_chunks(raw_text)
-                    st.write("Text chunks:")
-                    st.write(text_chunks)  # Debug: Show the text chunks
-                    
                     get_vector_store(text_chunks, google_ai_api_key)
                     st.success("Processing complete.")
             else:
                 st.error("Google API key is missing. Please provide it in the secrets configuration.")
 
     if user_question and google_ai_api_key:
-        response_text = user_input(user_question, google_ai_api_key)
-        if response_text:
-            st.write("Reply:\n\n", response_text)
-        else:
-            st.write("This question cannot be answered from the given context.")
+        user_input(user_question, google_ai_api_key)
 
 if __name__ == "__main__":
     app()
