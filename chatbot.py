@@ -54,14 +54,19 @@ def download_file_from_url(url):
 def get_pdf_text(pdf_files):
     text = ""
     for pdf in pdf_files:
-        extracted_text = extract_text(pdf)
-        text += extracted_text
+        try:
+            extracted_text = extract_text(pdf)
+            text += extracted_text
+            st.write(f"Extracted text from {pdf}: {extracted_text[:200]}...")  # Log extracted text snippet
+        except Exception as e:
+            st.error(f"Error extracting text from {pdf}: {e}")
     return text
 
 # Function to split text into chunks
 def get_text_chunks(text):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
     chunks = text_splitter.split_text(text)
+    st.write(f"Text chunks: {chunks[:5]}...")  # Log text chunks snippet
     return chunks
 
 # Function to create vector store
@@ -69,6 +74,7 @@ def get_vector_store(text_chunks, api_key):
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
+    st.write("Vector store created and saved locally.")  # Log vector store creation
 
 # Function to create conversational chain
 def get_conversational_chain(api_key):
@@ -90,6 +96,7 @@ def user_input(user_question, api_key):
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
     new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
     docs = new_db.similarity_search(user_question)
+    st.write(f"Documents retrieved for the query: {docs}")  # Log retrieved documents
     chain = get_conversational_chain(api_key)
     response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
     return response["output_text"]
