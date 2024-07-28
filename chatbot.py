@@ -73,7 +73,7 @@ def load_creds():
 
 def download_file_to_temp(url):
     # Create a temporary directory
-    storage_client = storage.Client.from_service_account_info(st.session_state["connext_chatbot_admin_credentials"])
+    storage_client = storage.Client.from_service_account_info(st.secrets["connext_chatbot_admin_credentials"])
     bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
     temp_dir = tempfile.mkdtemp()
 
@@ -269,6 +269,10 @@ def app():
     #Get firestore client
     firestore_db=firestore.client()
     st.session_state.db=firestore_db
+
+    # Ensure the credentials are loaded into session state
+    if "connext_chatbot_admin_credentials" not in st.session_state:
+        st.session_state["connext_chatbot_admin_credentials"] = st.secrets["connext_chatbot_admin_credentials"]
 
     # Center the logo image
     col1, col2, col3 = st.columns([3,4,3])
