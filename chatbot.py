@@ -17,47 +17,17 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 import datetime
 import requests
-import json
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 
-### Functions: Start ###
+# Check if google-auth-oauthlib is installed
+try:
+    from google_auth_oauthlib.flow import InstalledAppFlow
+except ImportError:
+    st.error("google-auth-oauthlib is not installed. Please install it by running: pip install google-auth-oauthlib")
 
-SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
-
-def load_creds():
-    """Load credentials from Streamlit secrets and handle them using a temporary file."""
-    # Parse the token data from Streamlit's secrets
-    token_info = {
-        'token': st.secrets["token"]["value"],
-        'refresh_token': st.secrets["token"]["refresh_token"],
-        'token_uri': st.secrets["token"]["token_uri"],
-        'client_id': st.secrets["token"]["client_id"],
-        'client_secret': st.secrets["token"]["client_secret"],
-        'scopes': st.secrets["token"]["scopes"],
-        'expiry': st.secrets["token"]["expiry"]  # Assuming expiry is directly usable
-    }
-
-    # Create a temporary file to store the token data
-    temp_dir = tempfile.mkdtemp()
-    token_file_path = os.path.join(temp_dir, 'token.json')
-    with open(token_file_path, 'w') as token_file:
-        json.dump(token_info, token_file)
-
-    # Load the credentials from the temporary file
-    creds = Credentials.from_authorized_user_file(token_file_path, SCOPES)
-
-    # Refresh the token if necessary
-    if creds and creds.expired and creds.refresh_token:
-        st.toast("Currently refreshing token...")
-        creds.refresh(Request())
-
-        # Optionally update the temporary file with the refreshed token data
-        with open(token_file_path, 'w') as token_file:
-            token_file.write(creds.to_json())
-
-    return creds
+# Initialize Firebase SDK
+if not firebase_admin._apps:
+    cred = credentials.Certificate(st.secrets["service_account"])
+    firebase_admin.initialize_app(cred)
 
 # Function to generate a signed URL for a file
 def generate_signed_url(bucket_name, blob_name, service_account_info, expiration=3600):
@@ -130,29 +100,7 @@ def user_input(user_question, api_key):
     docs = new_db.similarity_search(user_question)
     chain = get_conversational_chain(api_key)
     response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
-    return response["output_text"]
-
-# Function to process user input with fine-tuned Gemini model
-def user_input_fine_tuned(user_question, api_key):
-    try:
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        data = {
-            "prompt": user_question,
-            "temperature": 0.5,
-            "max_tokens": 150
-        }
-        response = requests.post("YOUR_GEMINI_MODEL_ENDPOINT", headers=headers, json=data)
-        if response.status_code == 200:
-            return response.json()["choices"][0]["text"]
-        else:
-            st.error(f"Failed to get response from fine-tuned model: {response.status_code}")
-            return "An error occurred while processing your request."
-    except Exception as e:
-        st.error(f"Error processing user input with fine-tuned model: {e}")
-        return "An error occurred while processing your request."
+    st.write("Reply:\n\n", response["output_text"])
 
 # Main app function
 def app():
@@ -188,28 +136,12 @@ def app():
     docs = retrievers_ref.stream()
 
     user_question = st.text_input("Ask a Question", key="user_question")
-    submit_button = st.button("Submit", key="submit_button")
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
     
     if "selected_retrievers" not in st.session_state:
         st.session_state["selected_retrievers"] = []
-
-    if "answer" not in st.session_state:
-        st.session_state["answer"] = ""
-
-    if "request_fine_tuned_answer" not in st.session_state:
-        st.session_state["request_fine_tuned_answer"] = False
-
-    if 'fine_tuned_answer_expander_state' not in st.session_state:
-        st.session_state.fine_tuned_answer_expander_state = False
-
-    if 'show_fine_tuned_expander' not in st.session_state:
-        st.session_state.show_fine_tuned_expander = True
-
-    if 'parsed_result' not in st.session_state:
-        st.session_state.parsed_result = {}
 
     with st.sidebar:
         st.title("PDF Documents:")
@@ -253,45 +185,8 @@ def app():
             else:
                 st.error("Google API key is missing. Please provide it in the secrets configuration.")
 
-    if submit_button:
-        if user_question and google_ai_api_key:
-            st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
-
-    # Setup placeholders for answers
-    answer_placeholder = st.empty()
-
-    if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
-        answer_placeholder.write(f"Reply:\n\n {st.session_state.parsed_result['Answer']}")
-        
-        # Check if the answer is not directly in the context
-        if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
-            if st.session_state.show_fine_tuned_expander:
-                with st.expander("Get fine-tuned answer?", expanded=False):
-                    st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
-                    col1, col2, _ = st.columns([3, 3, 6])
-                    with col1:
-                        if st.button("Yes", key="yes_button"):
-                            # Use session state to handle the rerun after button press
-                            print("Requesting fine_tuned_answer...")
-                            st.session_state["request_fine_tuned_answer"] = True
-                            st.session_state.show_fine_tuned_expander = False
-                            st.rerun()
-                    with col2:
-                        if st.button("No", key="no_button"):
-                            st.session_state.show_fine_tuned_expander = False
-                            st.rerun()
-
-    # Handle the generation of fine-tuned answer if the flag is set
-    if st.session_state["request_fine_tuned_answer"]:
-        print("Generating fine-tuned answer...")
-        fine_tuned_result = user_input_fine_tuned(user_question, google_ai_api_key)
-        if fine_tuned_result:
-            print(fine_tuned_result.strip())
-            answer_placeholder.write(f"Fine-tuned Reply:\n\n {fine_tuned_result.strip()}")
-            st.session_state.show_fine_tuned_expander = False
-        else:
-            answer_placeholder.write("Failed to generate a fine-tuned answer.")
-        st.session_state["request_fine_tuned_answer"] = False  # Reset the flag after handling
+    if user_question and google_ai_api_key:
+        user_input(user_question, google_ai_api_key)
 
 if __name__ == "__main__":
     app()
