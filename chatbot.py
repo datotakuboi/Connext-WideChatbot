@@ -233,19 +233,22 @@ def app():
     firestore_db = firestore.client()
     st.session_state.db = firestore_db
 
-    # Center the logo image
-    col1, col2, col3 = st.columns([3, 4, 3])
-
-    with col1:
-        st.write(' ')
-
-    with col2:
-        st.image("Connext_Logo.png", width=250)
-
-    with col3:
-        st.write(' ')
-
-    st.markdown('## Welcome to :blue[Connext Chatbot] :robot_face:')
+    # Center the logo image and welcome text
+    st.markdown("""
+        <style>
+            .centered {
+                text-align: center;
+            }
+            .logo {
+                margin: 0 auto;
+                display: block;
+            }
+        </style>
+        <div class="centered">
+            <img class="logo" src="Connext_Logo.png" width="250"/>
+            <h2>Welcome to <span style='color:blue;'>Connext Chatbot</span> 🤖</h2>
+        </div>
+    """, unsafe_allow_html=True)
 
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
@@ -325,7 +328,7 @@ def app():
     answer_placeholder = st.empty()
 
     if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
-        answer_placeholder.write(f"Reply:\n\n {st.session_state.parsed_result['Answer']}")
+        answer_placeholder.markdown(f"### Reply:\n\n {st.session_state.parsed_result['Answer']}")
         
         # Check if the answer is not directly in the context
         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
@@ -351,10 +354,10 @@ def app():
         fine_tuned_result = try_get_answer(user_question, context="", api_key=google_ai_api_key, fine_tuned_knowledge=True)
         if fine_tuned_result:
             print(fine_tuned_result.strip())
-            answer_placeholder.write(f"Fine-tuned Reply:\n\n {fine_tuned_result.strip()}")
+            answer_placeholder.markdown(f"### Fine-tuned Reply:\n\n {fine_tuned_result.strip()}")
             st.session_state.show_fine_tuned_expander = False
         else:
-            answer_placeholder.write("Failed to generate a fine-tuned answer.")
+            answer_placeholder.markdown("### Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False  # Reset the flag after handling
 
 if __name__ == "__main__":
