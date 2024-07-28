@@ -17,6 +17,7 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 import datetime
 import requests
+import json
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
@@ -72,21 +73,6 @@ def get_vector_store(text_chunks, api_key):
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
 
-# Function to create conversational chain
-def get_conversational_chain(api_key):
-    prompt_template = """
-    Answer the question as detailed as possible from the provided context, make sure to provide all the details, if the answer is not in
-    provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
-    Context:\n {context}?\n
-    Question: \n{question}\n
-
-    Answer:
-    """
-    model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.5, google_api_key=api_key)
-    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
-    return chain
-
 def extract_and_parse_json(text):
     # Find the first opening and the last closing curly brackets
     start_index = text.find('{')
@@ -119,7 +105,7 @@ def is_expected_json_content(json_data):
     
     return True  # All checks passed for the specified type
 
-def get_generative_model(api_key, response_mime_type = "text/plain"):
+def get_generative_model(api_key, response_mime_type="text/plain"):
     generation_config = {
         "temperature": 0.4,
         "top_p": 1,
@@ -133,7 +119,7 @@ def get_generative_model(api_key, response_mime_type = "text/plain"):
     print(f"Model selected: {model}")
     return model
 
-def generate_response(question, context, api_key, fine_tuned_knowledge = False):
+def generate_response(question, context, api_key, fine_tuned_knowledge=False):
     prompt_using_fine_tune_knowledge = f"""
     Based on your base or fine-tuned knowledge, can you answer the the following question?
 
@@ -173,7 +159,7 @@ def generate_response(question, context, api_key, fine_tuned_knowledge = False):
     
     return model.generate_content(prompt).text
 
-def try_get_answer(user_question, context, api_key, fine_tuned_knowledge = False):
+def try_get_answer(user_question, context, api_key, fine_tuned_knowledge=False):
     parsed_result = {}
     if not fine_tuned_knowledge:
         response_json_valid = False
@@ -188,21 +174,21 @@ def try_get_answer(user_question, context, api_key, fine_tuned_knowledge = False
                 # print("Chatbot Original Reponse: ", response)
             except Exception as e:
                 print(f"Failed to create response for the question:\n{user_question}\n\n Error Code: {str(e)}")
-                max_attempts = max_attempts - 1
+                max_attempts -= 1
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
                 continue
 
             # Test 2
             parsed_result, response_json_valid = extract_and_parse_json(response)
-            if response_json_valid == False:
+            if not response_json_valid:
                 print(f"Failed to validate and parse json for the questions:\n {user_question}")
-                max_attempts = max_attempts - 1
+                max_attempts -= 1
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
 
             # Test 3
             is_expected_json = is_expected_json_content(parsed_result)
-            if is_expected_json == False:
+            if not is_expected_json:
                 print(f"Successfully validated and parse json for the question: {user_question} but is not on expected format... Trying again...")
                 st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
