@@ -221,6 +221,19 @@ def user_input(user_question, api_key):
 def app():
     st.set_page_config(page_title="Connext Chatbot", layout="wide")
 
+    # Custom CSS to center content
+    st.markdown("""
+        <style>
+        .centered {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
     # Retrieve API key from secrets
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
 
@@ -233,22 +246,10 @@ def app():
     firestore_db = firestore.client()
     st.session_state.db = firestore_db
 
-    # Center the logo image
-    col1, col2, col3 = st.columns([3, 4, 3])
-
-    with col1:
-        st.write(' ')
-
-    with col2:
-        st.image("Connext_Logo.png", width=250)
-
-    with col3:
-        st.write(' ')
-
+    # Center the logo image and welcome message
+    st.markdown('<div class="centered">', unsafe_allow_html=True)
+    st.image("Connext_Logo.png", width=250)
     st.markdown('## Welcome to :blue[Connext Chatbot] :robot_face:')
-
-    retrievers_ref = st.session_state.db.collection('Retrievers')
-    docs = retrievers_ref.stream()
 
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
@@ -274,48 +275,6 @@ def app():
     if 'parsed_result' not in st.session_state:
         st.session_state.parsed_result = {}
 
-    with st.sidebar:
-        st.title("PDF Documents:")
-        for idx, doc in enumerate(docs, start=1):
-            retriever = doc.to_dict()
-            retriever['id'] = doc.id  # Add document ID to the retriever dictionary
-            retriever_name = retriever['retriever_name']
-            retriever_description = retriever['retriever_description']
-            with st.expander(retriever_name):
-                st.markdown(f"**Description:** {retriever_description}")
-
-                # Generate signed URL for the document
-                parsed_url = urlparse(retriever['document'])
-                file_name = os.path.basename(unquote(parsed_url.path))
-                signed_url = generate_signed_url('connext-chatbot-admin.appspot.com', file_name, st.secrets["service_account"])
-
-                st.markdown(f"_**File Name**_: {file_name}")
-                st.markdown(f"[Download PDF]({signed_url})", unsafe_allow_html=True)
-
-                retriever["signed_url"] = signed_url
-                st.session_state["retrievers"][retriever_name] = retriever  # Populate the retriever dictionary
-
-        st.title("PDF Retriever Selection:")
-        st.session_state["selected_retrievers"] = st.multiselect("Select Retrievers", list(st.session_state["retrievers"].keys()))
-
-        if st.button("Submit & Process", key="process_button"):
-            if google_ai_api_key:
-                with st.spinner("Processing..."):
-                    selected_retrievers = st.session_state["selected_retrievers"]
-                    downloaded_files = []
-                    for name in selected_retrievers:
-                        signed_url = st.session_state["retrievers"][name]["signed_url"]
-                        file_path, _ = download_file_from_url(signed_url)
-                        if file_path:
-                            downloaded_files.append(file_path)
-                    
-                    raw_text = get_pdf_text(downloaded_files)
-                    text_chunks = get_text_chunks(raw_text)
-                    get_vector_store(text_chunks, google_ai_api_key)
-                    st.success("Processing complete.")
-            else:
-                st.error("Google API key is missing. Please provide it in the secrets configuration.")
-
     # Process user input and handle responses
     if submit_button:
         if user_question and google_ai_api_key:
@@ -325,7 +284,7 @@ def app():
     answer_placeholder = st.empty()
 
     if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
-        answer_placeholder.write(f"Reply:\n\n {st.session_state.parsed_result['Answer']}")
+        answer_placeholder.markdown(f"### Reply:\n\n {st.session_state.parsed_result['Answer']}")
         
         # Check if the answer is not directly in the context
         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
@@ -351,11 +310,13 @@ def app():
         fine_tuned_result = try_get_answer(user_question, context="", api_key=google_ai_api_key, fine_tuned_knowledge=True)
         if fine_tuned_result:
             print(fine_tuned_result.strip())
-            answer_placeholder.write(f"Fine-tuned Reply:\n\n {fine_tuned_result.strip()}")
+            answer_placeholder.markdown(f"### Fine-tuned Reply:\n\n {fine_tuned_result.strip()}")
             st.session_state.show_fine_tuned_expander = False
         else:
-            answer_placeholder.write("Failed to generate a fine-tuned answer.")
+            answer_placeholder.markdown("### Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False  # Reset the flag after handling
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     app()
