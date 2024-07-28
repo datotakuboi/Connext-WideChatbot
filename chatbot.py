@@ -219,7 +219,7 @@ def user_input(user_question, api_key):
 
 # Main app function
 def app():
-    st.set_page_config(page_title="Connext Chatbot", layout="wide")
+    
 
     # Retrieve API key from secrets
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
