@@ -15,6 +15,9 @@ from langchain.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 import datetime
 import requests
 import json
@@ -23,6 +26,49 @@ import json
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["service_account"])
     firebase_admin.initialize_app(cred)
+
+SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
+
+@st.experimental_dialog("Google Consent Authentication Link")
+def google_oauth_link(flow):
+    auth_url, _ = flow.authorization_url(prompt='consent')
+    st.write("Please go to this URL and authorize access:")
+    st.markdown(f"[Sign in with Google]({auth_url})", unsafe_allow_html=True)
+    code = st.text_input("Enter the authorization code:")
+    return code
+
+def load_creds():
+    """Load credentials from Streamlit secrets and handle them using a temporary file."""
+    # Parse the token data from Streamlit's secrets
+    token_info = {
+        'token': st.secrets["token"]["value"],
+        'refresh_token': st.secrets["token"]["refresh_token"],
+        'token_uri': st.secrets["token"]["token_uri"],
+        'client_id': st.secrets["token"]["client_id"],
+        'client_secret': st.secrets["token"]["client_secret"],
+        'scopes': st.secrets["token"]["scopes"],
+        'expiry': st.secrets["token"]["expiry"]  # Assuming expiry is directly usable
+    }
+
+    # Create a temporary file to store the token data
+    temp_dir = tempfile.mkdtemp()
+    token_file_path = os.path.join(temp_dir, 'token.json')
+    with open(token_file_path, 'w') as token_file:
+        json.dump(token_info, token_file)
+
+    # Load the credentials from the temporary file
+    creds = Credentials.from_authorized_user_file(token_file_path, SCOPES)
+
+    # Refresh the token if necessary
+    if creds and creds.expired and creds.refresh_token:
+        st.toast("Currently refreshing token...")
+        creds.refresh(Request())
+
+        # Optionally update the temporary file with the refreshed token data
+        with open(token_file_path, 'w') as token_file:
+            token_file.write(creds.to_json())
+
+    return creds
 
 # Function to generate a signed URL for a file
 def generate_signed_url(bucket_name, blob_name, service_account_info, expiration=3600):
@@ -105,17 +151,22 @@ def is_expected_json_content(json_data):
     
     return True  # All checks passed for the specified type
 
-def get_generative_model(api_key, response_mime_type="text/plain"):
+def get_generative_model(response_mime_type = "text/plain"):
     generation_config = {
-        "temperature": 0.4,
-        "top_p": 1,
-        "max_output_tokens": 8192,
-        "response_mime_type": response_mime_type
+    "temperature": 0.4,
+    "top_p": 1,
+    "max_output_tokens": 8192,
+    "response_mime_type": response_mime_type
     }
 
-    genai.configure(api_key=api_key)
+    if st.session_state["oauth_creds"] is not None:
+        genai.configure(credentials=st.session_state["oauth_creds"])
+    else:
+        st.session_state["oauth_creds"] = load_creds()
+        genai.configure(credentials=st.session_state["oauth_creds"])
 
-    model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h', generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
+
+    model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h' ,generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
     print(f"Model selected: {model}")
     return model
 
@@ -207,13 +258,17 @@ def try_get_answer(user_question, context, api_key, fine_tuned_knowledge=False):
 
 # Function to process user input
 def user_input(user_question, api_key):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-    docs = new_db.similarity_search(user_question)
-    context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
+    
+    with st.spinner("Processing..."):
+        st.session_state.show_fine_tuned_expander = True  # Reset
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+        new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+        docs = new_db.similarity_search(user_question)
+        
+        context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
-    parsed_result = try_get_answer(user_question, context, api_key)
-    print(f"Parsed Result: {parsed_result}")
+        parsed_result = try_get_answer(user_question, context)
+        print(f"Parsed Result: {parsed_result}")
     
     return parsed_result
 
@@ -295,7 +350,7 @@ def app():
                 retriever["signed_url"] = signed_url
                 st.session_state["retrievers"][retriever_name] = retriever  # Populate the retriever dictionary
 
-        st.title("PDF Retriever Selection:")
+        st.title("PDF Document Selection:")
         st.session_state["selected_retrievers"] = st.multiselect("Select Retrievers", list(st.session_state["retrievers"].keys()))
 
         if st.button("Submit & Process", key="process_button"):
