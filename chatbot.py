@@ -170,7 +170,8 @@ def get_generative_model(response_mime_type = "text/plain"):
     print(f"Model selected: {model}")
     return model
 
-def generate_response(question, context, api_key, fine_tuned_knowledge=False):
+def generate_response(question, context, fine_tuned_knowledge = False):
+
     prompt_using_fine_tune_knowledge = f"""
     Based on your base or fine-tuned knowledge, can you answer the the following question?
 
@@ -206,11 +207,12 @@ def generate_response(question, context, api_key, fine_tuned_knowledge=False):
     """
 
     prompt = prompt_using_fine_tune_knowledge if fine_tuned_knowledge else prompt_with_context
-    model = get_generative_model(api_key, "text/plain" if fine_tuned_knowledge else "application/json")
+    model = get_generative_model("text/plain" if fine_tuned_knowledge else "application/json")
     
     return model.generate_content(prompt).text
 
-def try_get_answer(user_question, context, api_key, fine_tuned_knowledge=False):
+def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
+
     parsed_result = {}
     if not fine_tuned_knowledge:
         response_json_valid = False
@@ -219,39 +221,39 @@ def try_get_answer(user_question, context, api_key, fine_tuned_knowledge=False):
         while not response_json_valid and max_attempts > 0:
             response = ""
 
-            # Test 1
+            #Test 1
             try:
-                response = generate_response(user_question, context, api_key, fine_tuned_knowledge)
+                response = generate_response(user_question, context , fine_tuned_knowledge)
                 # print("Chatbot Original Reponse: ", response)
             except Exception as e:
                 print(f"Failed to create response for the question:\n{user_question}\n\n Error Code: {str(e)}")
-                max_attempts -= 1
+                max_attempts = max_attempts - 1
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
                 continue
 
-            # Test 2
+            #Test 2
             parsed_result, response_json_valid = extract_and_parse_json(response)
-            if not response_json_valid:
+            if response_json_valid == False:
                 print(f"Failed to validate and parse json for the questions:\n {user_question}")
-                max_attempts -= 1
+                max_attempts = max_attempts - 1
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
 
-            # Test 3
-            is_expected_json = is_expected_json_content(parsed_result)
-            if not is_expected_json:
+            #Test 3
+            is_expected_json = is_expected_json_content(parsed_result)  
+            if is_expected_json == False:
                 print(f"Successfully validated and parse json for the question: {user_question} but is not on expected format... Trying again...")
                 st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
             
-            break  # If all tests passed above
-    else:  # if using fine_tuned knowledge
+            break #If all tests passed above
+    else: #if using fine_tuned knowledge
         try:
             print("Getting fine tuned knowledge...")
-            parsed_result = generate_response(user_question, context, api_key, fine_tuned_knowledge)
+            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
         except Exception as e:
             print(f"Failed to create response for the question:\n\n {user_question}")
-            parsed_result = ""  # Default empty string given when failed to generate response
+            parsed_result = "" #Defaul empty string given when failed to generate response
             st.toast(f"Failed to create a response for your query.")
 
     return parsed_result
@@ -403,7 +405,7 @@ def app():
     # Handle the generation of fine-tuned answer if the flag is set
     if st.session_state["request_fine_tuned_answer"]:
         print("Generating fine-tuned answer...")
-        fine_tuned_result = try_get_answer(user_question, context="", api_key=google_ai_api_key, fine_tuned_knowledge=True)
+        fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
         if fine_tuned_result:
             print(fine_tuned_result.strip())
             answer_placeholder.write(f"Fine-tuned Reply:\n\n {fine_tuned_result.strip()}")
