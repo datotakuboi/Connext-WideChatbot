@@ -22,6 +22,10 @@ import datetime
 import requests
 import json
 
+#Initialize session_state values
+if "oauth_creds" not in st.session_state:
+    st.session_state["oauth_creds"] = None
+
 # Initialize Firebase SDK
 if not firebase_admin._apps:
     cred = credentials.Certificate(dict(st.secrets["service_account"]))
