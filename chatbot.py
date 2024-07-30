@@ -24,7 +24,7 @@ import json
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
-    cred = credentials.Certificate(st.secrets["service_account"])
+    cred = credentials.Certificate(dict(st.secrets["service_account"]))
     firebase_admin.initialize_app(cred)
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
