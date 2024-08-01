@@ -390,6 +390,9 @@ def app():
             if isinstance(parsed_result, dict) and "Answer" in parsed_result:
                 st.session_state.conversation_context += f"\n\n{parsed_result['Answer']}"
                 st.session_state.conversation_history.append((user_question, str(parsed_result["Answer"])))
+                # Check if the answer is not directly in the context
+                if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
+                    st.session_state.show_fine_tuned_expander = True
             else:
                 st.session_state.conversation_context += "\n\nNo valid answer generated or error occurred."
                 st.session_state.conversation_history.append((user_question, "No valid answer generated or error occurred."))
@@ -400,23 +403,22 @@ def app():
     if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
         answer_placeholder.write(f"Reply:\n\n {st.session_state.parsed_result['Answer']}")
         
-        # Check if the answer is not directly in the context
-        if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
-            if st.session_state.show_fine_tuned_expander:
-                with st.expander("Get fine-tuned answer?", expanded=False):
-                    st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
-                    col1, col2, _ = st.columns([3,3,6])
-                    with col1:
-                        if st.button("Yes", key="yes_button"):
-                            # Use session state to handle the rerun after button press
-                            print("Requesting fine_tuned_answer...")
-                            st.session_state["request_fine_tuned_answer"] = True
-                            st.session_state.show_fine_tuned_expander = False
-                            st.rerun()
-                    with col2:
-                        if st.button("No", key="no_button"):
-                            st.session_state.show_fine_tuned_expander = False
-                            st.rerun()
+        # Show the fine-tuned answer option if applicable
+        if st.session_state.show_fine_tuned_expander:
+            with st.expander("Get fine-tuned answer?", expanded=True):
+                st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
+                col1, col2, _ = st.columns([3,3,6])
+                with col1:
+                    if st.button("Yes", key="yes_button"):
+                        # Use session state to handle the rerun after button press
+                        print("Requesting fine_tuned_answer...")
+                        st.session_state["request_fine_tuned_answer"] = True
+                        st.session_state.show_fine_tuned_expander = False
+                        st.rerun()
+                with col2:
+                    if st.button("No", key="no_button"):
+                        st.session_state.show_fine_tuned_expander = False
+                        st.rerun()
 
     # Handle the generation of fine-tuned answer if the flag is set
     if st.session_state["request_fine_tuned_answer"]:
