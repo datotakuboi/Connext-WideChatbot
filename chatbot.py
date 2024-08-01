@@ -22,15 +22,9 @@ import datetime
 import requests
 import json
 
-# Initialize session_state values
+#Initialize session_state values
 if "oauth_creds" not in st.session_state:
     st.session_state["oauth_creds"] = None
-if "conversation_history" not in st.session_state:
-    st.session_state["conversation_history"] = []
-if "conversation_context" not in st.session_state:
-    st.session_state["conversation_context"] = ""
-if "request_fine_tuned_answer" not in st.session_state:
-    st.session_state["request_fine_tuned_answer"] = False
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
@@ -231,39 +225,39 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
         while not response_json_valid and max_attempts > 0:
             response = ""
 
-            # Test 1
+            #Test 1
             try:
-                response = generate_response(user_question, context, fine_tuned_knowledge)
-                # print("Chatbot Original Response: ", response)
+                response = generate_response(user_question, context , fine_tuned_knowledge)
+                # print("Chatbot Original Reponse: ", response)
             except Exception as e:
                 print(f"Failed to create response for the question:\n{user_question}\n\n Error Code: {str(e)}")
-                max_attempts -= 1
+                max_attempts = max_attempts - 1
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
                 continue
 
-            # Test 2
+            #Test 2
             parsed_result, response_json_valid = extract_and_parse_json(response)
-            if not response_json_valid:
+            if response_json_valid == False:
                 print(f"Failed to validate and parse json for the questions:\n {user_question}")
-                max_attempts -= 1
+                max_attempts = max_attempts - 1
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
 
-            # Test 3
+            #Test 3
             is_expected_json = is_expected_json_content(parsed_result)  
-            if not is_expected_json:
+            if is_expected_json == False:
                 print(f"Successfully validated and parse json for the question: {user_question} but is not on expected format... Trying again...")
                 st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
             
-            break  # If all tests passed above
-    else:  # if using fine_tuned knowledge
+            break #If all tests passed above
+    else: #if using fine_tuned knowledge
         try:
             print("Getting fine tuned knowledge...")
-            parsed_result = generate_response(user_question, context, fine_tuned_knowledge)
+            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
         except Exception as e:
             print(f"Failed to create response for the question:\n\n {user_question}")
-            parsed_result = ""  # Default empty string given when failed to generate response
+            parsed_result = "" #Defaul empty string given when failed to generate response
             st.toast(f"Failed to create a response for your query.")
 
     return parsed_result
@@ -272,19 +266,15 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
 def user_input(user_question, api_key):
     
     with st.spinner("Processing..."):
+        st.session_state.show_fine_tuned_expander = True  # Reset
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
         new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
         docs = new_db.similarity_search(user_question)
         
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
-        st.session_state.conversation_context += f"\n\n{user_question}"
 
         parsed_result = try_get_answer(user_question, context)
         print(f"Parsed Result: {parsed_result}")
-        
-        # Automatically request a fine-tuned answer if the answer is not in the context
-        if isinstance(parsed_result, dict) and "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
-            parsed_result = try_get_answer(user_question, context=st.session_state.conversation_context, fine_tuned_knowledge=True)
     
     return parsed_result
 
@@ -332,6 +322,15 @@ def app():
 
     if "answer" not in st.session_state:
         st.session_state["answer"] = ""
+
+    if "request_fine_tuned_answer" not in st.session_state:
+        st.session_state["request_fine_tuned_answer"] = False
+
+    if 'fine_tuned_answer_expander_state' not in st.session_state:
+        st.session_state.fine_tuned_answer_expander_state = False
+
+    if 'show_fine_tuned_expander' not in st.session_state:
+        st.session_state.show_fine_tuned_expander = True
 
     if 'parsed_result' not in st.session_state:
         st.session_state.parsed_result = {}
@@ -381,26 +380,43 @@ def app():
     # Process user input and handle responses
     if submit_button:
         if user_question and google_ai_api_key:
-            parsed_result = user_input(user_question, google_ai_api_key)
-            # Ensure parsed_result is a dictionary and contains the 'Answer' key
-            if isinstance(parsed_result, dict) and "Answer" in parsed_result:
-                st.session_state.conversation_context += f"\n\n{parsed_result['Answer']}"
-                st.session_state.conversation_history.append((user_question, str(parsed_result["Answer"])))
-            else:
-                st.session_state.conversation_context += "\n\nNo valid answer generated or error occurred."
-                st.session_state.conversation_history.append((user_question, "No valid answer generated or error occurred."))
+            st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
 
     # Setup placeholders for answers
     answer_placeholder = st.empty()
 
     if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
         answer_placeholder.write(f"Reply:\n\n {st.session_state.parsed_result['Answer']}")
+        
+        # Check if the answer is not directly in the context
+        if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
+            if st.session_state.show_fine_tuned_expander:
+                with st.expander("Get fine-tuned answer?", expanded=False):
+                    st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
+                    col1, col2, _ = st.columns([3,3,6])
+                    with col1:
+                        if st.button("Yes", key="yes_button"):
+                            # Use session state to handle the rerun after button press
+                            print("Requesting fine_tuned_answer...")
+                            st.session_state["request_fine_tuned_answer"] = True
+                            st.session_state.show_fine_tuned_expander = False
+                            st.rerun()
+                    with col2:
+                        if st.button("No", key="no_button"):
+                            st.session_state.show_fine_tuned_expander = False
+                            st.rerun()
 
-    # Display conversation history
-    st.markdown("## Conversation History")
-    for question, response in st.session_state.conversation_history:
-        st.markdown(f"**User:** {question}")
-        st.markdown(f"**Bot:** {response}")
+    # Handle the generation of fine-tuned answer if the flag is set
+    if st.session_state["request_fine_tuned_answer"]:
+        print("Generating fine-tuned answer...")
+        fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
+        if fine_tuned_result:
+            print(fine_tuned_result.strip())
+            answer_placeholder.write(f"Fine-tuned Reply:\n\n {fine_tuned_result.strip()}")
+            st.session_state.show_fine_tuned_expander = False
+        else:
+            answer_placeholder.write("Failed to generate a fine-tuned answer.")
+        st.session_state["request_fine_tuned_answer"] = False  # Reset the flag after handling
 
 if __name__ == "__main__":
     app()
