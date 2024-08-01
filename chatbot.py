@@ -22,7 +22,7 @@ import datetime
 import requests
 import json
 
-# Initialize session_state values
+#Initialize session_state values
 if "oauth_creds" not in st.session_state:
     st.session_state["oauth_creds"] = None
 
@@ -262,12 +262,9 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
 
     return parsed_result
 
-# Store conversational history in session state
-if "conversation_history" not in st.session_state:
-    st.session_state["conversation_history"] = []
-
 # Function to process user input
 def user_input(user_question, api_key):
+    
     with st.spinner("Processing..."):
         st.session_state.show_fine_tuned_expander = True  # Reset
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
@@ -278,12 +275,6 @@ def user_input(user_question, api_key):
 
         parsed_result = try_get_answer(user_question, context)
         print(f"Parsed Result: {parsed_result}")
-    
-    # Append question and answer to conversational history
-    st.session_state.conversation_history.append({
-        "question": user_question,
-        "answer": parsed_result.get("Answer", "No answer generated.")
-    })
     
     return parsed_result
 
@@ -393,13 +384,6 @@ def app():
 
     # Setup placeholders for answers
     answer_placeholder = st.empty()
-
-    # Display the entire conversation history
-    if st.session_state.conversation_history:
-        for chat in st.session_state.conversation_history:
-            st.markdown(f"**Question:** {chat['question']}")
-            st.markdown(f"**Answer:** {chat['answer']}")
-            st.markdown("---")
 
     if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
         answer_placeholder.write(f"Reply:\n\n {st.session_state.parsed_result['Answer']}")
