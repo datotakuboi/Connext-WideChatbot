@@ -22,9 +22,11 @@ import datetime
 import requests
 import json
 
-#Initialize session_state values
+# Initialize session_state values
 if "oauth_creds" not in st.session_state:
     st.session_state["oauth_creds"] = None
+if "conversation_history" not in st.session_state:
+    st.session_state["conversation_history"] = []
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
@@ -380,7 +382,12 @@ def app():
     # Process user input and handle responses
     if submit_button:
         if user_question and google_ai_api_key:
-            st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
+            parsed_result = user_input(user_question, google_ai_api_key)
+            # Ensure parsed_result is a dictionary and contains the 'Answer' key
+            if isinstance(parsed_result, dict) and "Answer" in parsed_result:
+                st.session_state.conversation_history.append((user_question, parsed_result["Answer"]))
+            else:
+                st.session_state.conversation_history.append((user_question, "No valid answer generated or error occurred."))
 
     # Setup placeholders for answers
     answer_placeholder = st.empty()
@@ -417,6 +424,12 @@ def app():
         else:
             answer_placeholder.write("Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False  # Reset the flag after handling
+
+    # Display conversation history
+    st.markdown("## Conversation History")
+    for question, response in st.session_state.conversation_history:
+        st.markdown(f"**User:** {question}")
+        st.markdown(f"**Bot:** {response}")
 
 if __name__ == "__main__":
     app()
