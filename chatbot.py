@@ -22,9 +22,12 @@ import datetime
 import requests
 import json
 
-#Initialize session_state values
+# Initialize session_state values
 if "oauth_creds" not in st.session_state:
     st.session_state["oauth_creds"] = None
+
+if "conversation_history" not in st.session_state:
+    st.session_state["conversation_history"] = []
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
@@ -225,7 +228,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
         while not response_json_valid and max_attempts > 0:
             response = ""
 
-            #Test 1
+            # Test 1
             try:
                 response = generate_response(user_question, context , fine_tuned_knowledge)
                 # print("Chatbot Original Reponse: ", response)
@@ -235,7 +238,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
                 continue
 
-            #Test 2
+            # Test 2
             parsed_result, response_json_valid = extract_and_parse_json(response)
             if response_json_valid == False:
                 print(f"Failed to validate and parse json for the questions:\n {user_question}")
@@ -243,7 +246,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
 
-            #Test 3
+            # Test 3
             is_expected_json = is_expected_json_content(parsed_result)  
             if is_expected_json == False:
                 print(f"Successfully validated and parse json for the question: {user_question} but is not on expected format... Trying again...")
@@ -273,8 +276,18 @@ def user_input(user_question, api_key):
         
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
-        parsed_result = try_get_answer(user_question, context)
+        # Add the current question to the conversation history
+        st.session_state.conversation_history.append(f"User: {user_question}")
+
+        # Construct the context using the conversation history
+        history_context = "\n".join(st.session_state.conversation_history)
+
+        parsed_result = try_get_answer(user_question, history_context)
         print(f"Parsed Result: {parsed_result}")
+
+        # Add the response to the conversation history
+        if parsed_result and "Answer" in parsed_result:
+            st.session_state.conversation_history.append(f"Bot: {parsed_result['Answer']}")
     
     return parsed_result
 
@@ -417,6 +430,12 @@ def app():
         else:
             answer_placeholder.write("Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False  # Reset the flag after handling
+
+    # Display the conversation history
+    if st.session_state.conversation_history:
+        st.markdown("### Conversation History")
+        for line in st.session_state.conversation_history:
+            st.markdown(line)
 
 if __name__ == "__main__":
     app()
