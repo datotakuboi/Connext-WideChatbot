@@ -27,6 +27,8 @@ if "oauth_creds" not in st.session_state:
     st.session_state["oauth_creds"] = None
 if "conversation_history" not in st.session_state:
     st.session_state["conversation_history"] = []
+if "conversation_context" not in st.session_state:
+    st.session_state["conversation_context"] = ""
 
 # Initialize Firebase SDK
 if not firebase_admin._apps:
@@ -274,6 +276,7 @@ def user_input(user_question, api_key):
         docs = new_db.similarity_search(user_question)
         
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
+        st.session_state.conversation_context += f"\n\n{user_question}"
 
         parsed_result = try_get_answer(user_question, context)
         print(f"Parsed Result: {parsed_result}")
@@ -385,8 +388,10 @@ def app():
             parsed_result = user_input(user_question, google_ai_api_key)
             # Ensure parsed_result is a dictionary and contains the 'Answer' key
             if isinstance(parsed_result, dict) and "Answer" in parsed_result:
+                st.session_state.conversation_context += f"\n\n{parsed_result['Answer']}"
                 st.session_state.conversation_history.append((user_question, str(parsed_result["Answer"])))
             else:
+                st.session_state.conversation_context += "\n\nNo valid answer generated or error occurred."
                 st.session_state.conversation_history.append((user_question, "No valid answer generated or error occurred."))
 
     # Setup placeholders for answers
@@ -416,10 +421,11 @@ def app():
     # Handle the generation of fine-tuned answer if the flag is set
     if st.session_state["request_fine_tuned_answer"]:
         print("Generating fine-tuned answer...")
-        fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
+        fine_tuned_result = try_get_answer(user_question, context=st.session_state.conversation_context, fine_tuned_knowledge=True)
         if fine_tuned_result:
             print(fine_tuned_result.strip())
             answer_placeholder.write(f"Fine-tuned Reply:\n\n {fine_tuned_result.strip()}")
+            st.session_state.conversation_context += f"\n\n{fine_tuned_result.strip()}"
             st.session_state.show_fine_tuned_expander = False
         else:
             answer_placeholder.write("Failed to generate a fine-tuned answer.")
