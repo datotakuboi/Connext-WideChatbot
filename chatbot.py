@@ -356,11 +356,13 @@ def app():
         st.write(f"**You:** {chat['user_question']}")
         st.write(f"**Bot:** {chat['response']}")
 
-    answer_placeholder = st.empty()
+    # answer_placeholder = st.empty()
 
-    if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
-        answer_placeholder.write(f"**Bot:** {st.session_state.parsed_result['Answer']}")
+    # if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
+    #     answer_placeholder.write(f"**Bot:** {st.session_state.parsed_result['Answer']}")
         
+    if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
+        # If the user wants a fine-tuned answer
         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
             if st.session_state.show_fine_tuned_expander:
                 with st.expander("Get fine-tuned answer?", expanded=False):
@@ -379,11 +381,10 @@ def app():
     if st.session_state["request_fine_tuned_answer"]:
         fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
         if fine_tuned_result:
-            answer_placeholder.write(f"**Fine-tuned Bot:** {fine_tuned_result.strip()}")
             st.session_state.chat_history[-1]["response"] = fine_tuned_result.strip()
             st.session_state.show_fine_tuned_expander = False
         else:
-            answer_placeholder.write("Failed to generate a fine-tuned answer.")
+            st.error("Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False
 
 if __name__ == "__main__":
