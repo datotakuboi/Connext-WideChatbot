@@ -263,6 +263,10 @@ def user_input(user_question, api_key):
 
     return parsed_result
 
+def clear_chat():
+    st.session_state.chat_history = []
+    st.session_state.conversation_context = ""
+
 def app():
     st.set_page_config(page_title="Connext Chatbot", layout="centered")
 
@@ -293,6 +297,7 @@ def app():
 
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
+    clear_button = st.button("Clear Chat History", on_click=clear_chat)
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
