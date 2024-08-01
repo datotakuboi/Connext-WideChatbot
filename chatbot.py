@@ -29,6 +29,9 @@ if "oauth_creds" not in st.session_state:
 if "chat_history" not in st.session_state:
     st.session_state["chat_history"] = []
 
+if "conversation_context" not in st.session_state:
+    st.session_state["conversation_context"] = ""
+
 # Initialize Firebase SDK
 if not firebase_admin._apps:
     cred = credentials.Certificate(dict(st.secrets["service_account"]))
@@ -246,12 +249,18 @@ def user_input(user_question, api_key):
         
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
-        parsed_result = try_get_answer(user_question, context)
-        st.session_state.chat_history.append({
-            "user_question": user_question,
-            "response": parsed_result["Answer"] if "Answer" in parsed_result else "No response generated."
-        })
-    
+        # Combine previous conversation context with the current context
+        full_context = f"{st.session_state.conversation_context}\n\n{context}"
+
+        parsed_result = try_get_answer(user_question, full_context)
+        if parsed_result:
+            st.session_state.chat_history.append({
+                "user_question": user_question,
+                "response": parsed_result["Answer"] if "Answer" in parsed_result else "No response generated."
+            })
+            # Update the conversation context
+            st.session_state.conversation_context += f"\n\nUser: {user_question}\nBot: {parsed_result['Answer']}"
+
     return parsed_result
 
 def app():
@@ -356,13 +365,7 @@ def app():
         st.write(f"**You:** {chat['user_question']}")
         st.write(f"**Bot:** {chat['response']}")
 
-    # answer_placeholder = st.empty()
-
-    # if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
-    #     answer_placeholder.write(f"**Bot:** {st.session_state.parsed_result['Answer']}")
-        
     if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
-        # If the user wants a fine-tuned answer
         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
             if st.session_state.show_fine_tuned_expander:
                 with st.expander("Get fine-tuned answer?", expanded=False):
