@@ -22,9 +22,10 @@ import datetime
 import requests
 import json
 
-# Initialize session_state values
+#Initialize session_state values
 if "oauth_creds" not in st.session_state:
     st.session_state["oauth_creds"] = None
+
 if "conversation_history" not in st.session_state:
     st.session_state["conversation_history"] = []
 
@@ -379,54 +380,59 @@ def app():
             else:
                 st.error("Google API key is missing. Please provide it in the secrets configuration.")
 
-    # Process user input and handle responses
-    if submit_button:
-        if user_question and google_ai_api_key:
-            parsed_result = user_input(user_question, google_ai_api_key)
-            # Store the interaction in the session state
-            st.session_state.conversation_history.append((user_question, parsed_result))
-
-    # Setup placeholders for answers
-    answer_placeholder = st.empty()
-
-    if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
-        answer_placeholder.write(f"Reply:\n\n {st.session_state.parsed_result['Answer']}")
+   # Process user input and handle responses
+if submit_button:
+    if user_question and google_ai_api_key:
+        parsed_result = user_input(user_question, google_ai_api_key)
         
-        # Check if the answer is not directly in the context
-        if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
-            if st.session_state.show_fine_tuned_expander:
-                with st.expander("Get fine-tuned answer?", expanded=False):
-                    st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
-                    col1, col2, _ = st.columns([3,3,6])
-                    with col1:
-                        if st.button("Yes", key="yes_button"):
-                            # Use session state to handle the rerun after button press
-                            print("Requesting fine_tuned_answer...")
-                            st.session_state["request_fine_tuned_answer"] = True
-                            st.session_state.show_fine_tuned_expander = False
-                            st.rerun()
-                    with col2:
-                        if st.button("No", key="no_button"):
-                            st.session_state.show_fine_tuned_expander = False
-                            st.rerun()
-
-    # Handle the generation of fine-tuned answer if the flag is set
-    if st.session_state["request_fine_tuned_answer"]:
-        print("Generating fine-tuned answer...")
-        fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
-        if fine_tuned_result:
-            print(fine_tuned_result.strip())
-            answer_placeholder.write(f"Fine-tuned Reply:\n\n {fine_tuned_result.strip()}")
-            st.session_state.show_fine_tuned_expander = False
+        # Ensure parsed_result is a dictionary and contains the 'Answer' key
+        if isinstance(parsed_result, dict) and "Answer" in parsed_result:
+            st.session_state.conversation_history.append((user_question, parsed_result["Answer"]))
         else:
-            answer_placeholder.write("Failed to generate a fine-tuned answer.")
-        st.session_state["request_fine_tuned_answer"] = False  # Reset the flag after handling
+            st.session_state.conversation_history.append((user_question, "No valid answer generated or error occurred."))
 
-    # Display conversation history
-    st.markdown("## Conversation History")
-    for question, response in st.session_state.conversation_history:
-        st.markdown(f"**User:** {question}")
-        st.markdown(f"**Bot:** {response['Answer'] if 'Answer' in response else response}")
+# Setup placeholders for answers
+answer_placeholder = st.empty()
+
+if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
+    answer_placeholder.write(f"Reply:\n\n {st.session_state.parsed_result['Answer']}")
+    
+    # Check if the answer is not directly in the context
+    if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
+        if st.session_state.show_fine_tuned_expander:
+            with st.expander("Get fine-tuned answer?", expanded=False):
+                st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
+                col1, col2, _ = st.columns([3,3,6])
+                with col1:
+                    if st.button("Yes", key="yes_button"):
+                        # Use session state to handle the rerun after button press
+                        print("Requesting fine_tuned_answer...")
+                        st.session_state["request_fine_tuned_answer"] = True
+                        st.session_state.show_fine_tuned_expander = False
+                        st.rerun()
+                with col2:
+                    if st.button("No", key="no_button"):
+                        st.session_state.show_fine_tuned_expander = False
+                        st.rerun()
+
+# Handle the generation of fine-tuned answer if the flag is set
+if st.session_state["request_fine_tuned_answer"]:
+    print("Generating fine-tuned answer...")
+    fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
+    if fine_tuned_result:
+        print(fine_tuned_result.strip())
+        answer_placeholder.write(f"Fine-tuned Reply:\n\n {fine_tuned_result.strip()}")
+        st.session_state.show_fine_tuned_expander = False
+    else:
+        answer_placeholder.write("Failed to generate a fine-tuned answer.")
+    st.session_state["request_fine_tuned_answer"] = False  # Reset the flag after handling
+
+# Display conversation history
+st.markdown("## Conversation History")
+for question, response in st.session_state.conversation_history:
+    st.markdown(f"**User:** {question}")
+    st.markdown(f"**Bot:** {response}")
+
 
 if __name__ == "__main__":
     app()
