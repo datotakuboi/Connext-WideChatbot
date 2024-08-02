@@ -12,9 +12,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import google.generativeai as genai
 from langchain.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains.question_answering import load_qa_chain
-from langchain.prompts import PromptTemplate
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -365,12 +362,11 @@ def app():
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
 
-    st.markdown("### Chat History")
-    for chat in st.session_state.chat_history:
-        st.write(f"**You:** {chat['user_question']}")
-        st.write(f"**Bot:** {chat['response']}")
-
     if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
+        st.markdown("### Reply:")
+        st.write(st.session_state.parsed_result['Answer'])
+
+        # Check if the answer is not directly in the context
         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
             if st.session_state.show_fine_tuned_expander:
                 with st.expander("Get fine-tuned answer?", expanded=False):
@@ -391,9 +387,15 @@ def app():
         if fine_tuned_result:
             st.session_state.chat_history[-1]["response"] = fine_tuned_result.strip()
             st.session_state.show_fine_tuned_expander = False
+            st.session_state.parsed_result['Answer'] = fine_tuned_result.strip()
         else:
             st.error("Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False
+
+    st.markdown("### Chat History")
+    for chat in st.session_state.chat_history:
+        st.write(f"**You:** {chat['user_question']}")
+        st.write(f"**Bot:** {chat['response']}")
 
 if __name__ == "__main__":
     app()
