@@ -264,13 +264,6 @@ def clear_chat():
     st.session_state.chat_history = []
     st.session_state.conversation_context = ""
 
-def submit_question():
-    user_question = st.session_state.user_question
-    google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
-    if user_question and google_ai_api_key:
-        st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
-        st.session_state.user_question = ""  # Clear the input field
-
 def app():
     st.set_page_config(page_title="Connext Chatbot", layout="centered")
 
@@ -301,13 +294,12 @@ def app():
 
     chat_placeholder = st.empty()
     with chat_placeholder.container():
-        with st.container():
-            for chat in st.session_state.chat_history:
-                st.write(f"**You:** {chat['user_question']}")
-                st.write(f"**Bot:** {chat['response']}")
+        for chat in st.session_state.chat_history:
+            st.write(f"**You:** {chat['user_question']}")
+            st.write(f"**Bot:** {chat['response']}")
 
     user_question = st.text_input("Ask a Question", key="user_question")
-    submit_button = st.button("Submit", on_click=submit_question)
+    submit_button = st.button("Submit", key="submit_button")
     clear_button = st.button("Clear Chat History", on_click=clear_chat)
 
     if "retrievers" not in st.session_state:
@@ -372,8 +364,32 @@ def app():
             else:
                 st.error("Google API key is missing. Please provide it in the secrets configuration.")
 
+    if submit_button:
+        if user_question and google_ai_api_key:
+            st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
+            st.session_state.user_question = ""  # Clear the question input field after submission
+            with chat_placeholder.container():
+                for idx, chat in enumerate(st.session_state.chat_history):
+                    st.write(f"**You:** {chat['user_question']}")
+                    st.write(f"**Bot:** {chat['response']}")
+                    if idx == len(st.session_state.chat_history) - 1:  # Check the last question
+                        if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
+                            if st.session_state.show_fine_tuned_expander:
+                                with st.expander("Get fine-tuned answer?", expanded=False):
+                                    st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
+                                    col1, col2, _ = st.columns([3, 3, 6])
+                                    with col1:
+                                        if st.button("Yes", key=f"yes_button_{idx}"):
+                                            st.session_state["request_fine_tuned_answer"] = True
+                                            st.session_state.show_fine_tuned_expander = False
+                                            st.rerun()
+                                    with col2:
+                                        if st.button("No", key=f"no_button_{idx}"):
+                                            st.session_state.show_fine_tuned_expander = False
+                                            st.rerun()
+
     if st.session_state["request_fine_tuned_answer"]:
-        fine_tuned_result = try_get_answer(st.session_state.user_question, context="", fine_tuned_knowledge=True)
+        fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
         if fine_tuned_result:
             st.session_state.chat_history[-1]["response"] = fine_tuned_result.strip()
             st.session_state.show_fine_tuned_expander = False
