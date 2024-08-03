@@ -371,6 +371,20 @@ def app():
                 for chat in st.session_state.chat_history:
                     st.write(f"**You:** {chat['user_question']}")
                     st.write(f"**Bot:** {chat['response']}")
+                    if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
+                        if st.session_state.show_fine_tuned_expander:
+                            with st.expander("Get fine-tuned answer?", expanded=False):
+                                st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
+                                col1, col2, _ = st.columns([3,3,6])
+                                with col1:
+                                    if st.button("Yes", key="yes_button"):
+                                        st.session_state["request_fine_tuned_answer"] = True
+                                        st.session_state.show_fine_tuned_expander = False
+                                        st.rerun()
+                                with col2:
+                                    if st.button("No", key="no_button"):
+                                        st.session_state.show_fine_tuned_expander = False
+                                        st.rerun()
 
     if st.session_state["request_fine_tuned_answer"]:
         fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
