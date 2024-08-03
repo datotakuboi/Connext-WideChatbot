@@ -302,7 +302,7 @@ def app():
             st.write(f"**Bot:** {chat['response']}")
 
     user_question = st.text_input("Ask a Question", key="user_question")
-    submit_button = st.button("Submit", key="submit_button", on_click=clear_input)
+    submit_button = st.button("Submit", key="submit_button")
     clear_button = st.button("Clear Chat History", on_click=clear_chat)
 
     if "retrievers" not in st.session_state:
@@ -370,6 +370,7 @@ def app():
     if submit_button:
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
+            st.session_state["user_question"] = ""  # Clear the question input field after submission
             with chat_placeholder.container():
                 for idx, chat in enumerate(st.session_state.chat_history):
                     st.write(f"**You:** {chat['user_question']}")
