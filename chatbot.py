@@ -304,17 +304,17 @@ def app():
     if st.button("Clear Chat History", on_click=clear_chat):
         pass
 
-    # Display chat history
-    st.markdown("### Chat History")
-    for chat in st.session_state.chat_history:
-        st.write(f"**You:** {chat['user_question']}")
-        st.write(f"**Bot:** {chat['response']}")
-
     user_question = st.text_input("Ask a Question", key="user_question")
 
     if st.button("Submit"):
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
+
+    st.markdown("### Chat History")
+    for chat in st.session_state.chat_history:
+        st.markdown(f"**You:** {chat['user_question']}")
+        st.markdown(f"**Bot:** {chat['response']}")
+        st.markdown("---")  # Add a line separator between messages
 
     if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
         st.markdown("### Reply:")
