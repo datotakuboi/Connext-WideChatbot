@@ -374,9 +374,9 @@ def app():
                     if idx == len(st.session_state.chat_history) - 1:  # Check the last question
                         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
                             if st.session_state.show_fine_tuned_expander:
-                                with st.expander("Get fine-tuned answer?", expanded=False):
+                                with st.expander("Get fine-tuned answer?", expanded=True):
                                     st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
-                                    col1, col2, _ = st.columns([3, 3, 6])
+                                    col1, col2, _ = st.columns([1, 1, 1])
                                     with col1:
                                         if st.button("Yes", key=f"yes_button_{idx}"):
                                             st.session_state["request_fine_tuned_answer"] = True
