@@ -256,8 +256,8 @@ def app():
     chat_placeholder = st.empty()
     with chat_placeholder.container():
         for chat in st.session_state.chat_history:
-            st.write(f"🧑 **You:** {chat['user_question']}")
-            st.write(f"🤖 **Bot:** {chat['response']}")
+            st.markdown(f'<div style="text-align: left;"><img src="https://img.icons8.com/ios-filled/50/000000/user.png" width="20" height="20"> <strong>You:</strong> {chat["user_question"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="text-align: left;"><img src="https://img.icons8.com/ios-filled/50/000000/chatbot.png" width="20" height="20"> <strong>Bot:</strong> {chat["response"]}</div>', unsafe_allow_html=True)
 
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
@@ -330,8 +330,8 @@ def app():
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
             with chat_placeholder.container():
                 for idx, chat in enumerate(st.session_state.chat_history):
-                    st.write(f"🧑 **You:** {chat['user_question']}")
-                    st.write(f"🤖 **Bot:** {chat['response']}")
+                    st.markdown(f'<div style="text-align: left;"><img src="https://img.icons8.com/ios-filled/50/000000/user.png" width="20" height="20"> <strong>You:</strong> {chat["user_question"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="text-align: left;"><img src="https://img.icons8.com/ios-filled/50/000000/chatbot.png" width="20" height="20"> <strong>Bot:</strong> {chat["response"]}</div>', unsafe_allow_html=True)
                     if idx == len(st.session_state.chat_history) - 1:
                         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
                             if st.session_state.show_fine_tuned_expander:
