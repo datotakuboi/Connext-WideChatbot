@@ -313,7 +313,7 @@ def app():
                 st.write(f"**Bot:** {chat['response']}")
             st.markdown('</div>', unsafe_allow_html=True)
 
-    user_question = st.text_input("Ask a Question", key="user_question", on_change=lambda: st.session_state.update({"user_question": ""}))
+    user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
     clear_button = st.button("Clear Chat History", on_click=clear_chat)
 
