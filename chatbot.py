@@ -293,7 +293,8 @@ def app():
     docs = retrievers_ref.stream()
 
     chat_placeholder = st.empty()
-    with chat_placeholder.container():
+
+    with st.expander("Chat History", expanded=True):
         for chat in st.session_state.chat_history:
             st.write(f"**You:** {chat['user_question']}")
             st.write(f"**Bot:** {chat['response']}")
