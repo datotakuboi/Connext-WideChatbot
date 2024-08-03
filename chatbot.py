@@ -259,9 +259,35 @@ def app():
             st.write(f"🧑 **You:** {chat['user_question']}")
             st.write(f"🤖 **Bot:** {chat['response']}")
 
-    user_question = st.text_input("Ask a Question", key="user_question")
-    submit_button = st.button("Submit", key="submit_button")
-    clear_button = st.button("Clear Chat History", on_click=clear_chat)
+    # Create a fixed position input box and buttons at the bottom of the page
+    st.markdown(
+        """
+        <style>
+        .fixed-bottom {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: #ffffff;
+            padding: 10px 0;
+            box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.1);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    fixed_input = st.empty()
+
+    with fixed_input.container():
+        st.markdown('<div class="fixed-bottom">', unsafe_allow_html=True)
+        user_question = st.text_input("Ask a Question", key="user_question")
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            submit_button = st.button("Submit", key="submit_button")
+        with col2:
+            clear_button = st.button("Clear Chat History", on_click=clear_chat)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
