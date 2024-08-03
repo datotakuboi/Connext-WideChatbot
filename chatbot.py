@@ -266,6 +266,7 @@ def clear_chat():
 
 def clear_input():
     st.session_state["user_question"] = ""
+    st.experimental_rerun()
 
 def app():
     st.set_page_config(page_title="Connext Chatbot", layout="centered")
@@ -302,7 +303,7 @@ def app():
             st.write(f"**Bot:** {chat['response']}")
 
     user_question = st.text_input("Ask a Question", key="user_question")
-    submit_button = st.button("Submit", key="submit_button")
+    submit_button = st.button("Submit", key="submit_button", on_click=clear_input)
     clear_button = st.button("Clear Chat History", on_click=clear_chat)
 
     if "retrievers" not in st.session_state:
