@@ -29,6 +29,9 @@ if "chat_history" not in st.session_state:
 if "conversation_context" not in st.session_state:
     st.session_state["conversation_context"] = ""
 
+if "user_question" not in st.session_state:
+    st.session_state["user_question"] = ""
+
 # Initialize Firebase SDK
 if not firebase_admin._apps:
     cred = credentials.Certificate(dict(st.secrets["service_account"]))
