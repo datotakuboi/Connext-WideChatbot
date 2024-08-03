@@ -367,6 +367,8 @@ def app():
     if submit_button:
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
+            # Clear the text input field by resetting its key
+            st.session_state.user_question = ""
             with chat_placeholder.container():
                 for idx, chat in enumerate(st.session_state.chat_history):
                     st.write(f"**You:** {chat['user_question']}")
