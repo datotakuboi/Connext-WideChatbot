@@ -258,9 +258,6 @@ def user_input(user_question, api_key):
             # Update the conversation context
             st.session_state.conversation_context += f"\n\nUser: {user_question}\nBot: {parsed_result['Answer']}"
 
-            # Immediately display the new chat entry
-            st.experimental_rerun()
-
     return parsed_result
 
 def clear_chat():
@@ -369,6 +366,8 @@ def app():
     if submit_button:
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
+            # Directly update the chat history display
+            st.experimental_rerun()
 
     if st.session_state["request_fine_tuned_answer"]:
         fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
