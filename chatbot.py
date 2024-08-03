@@ -382,7 +382,6 @@ def app():
     if submit_button:
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
-            st.session_state["user_question"] = ""  # Clear the input field after submitting
             with chat_placeholder.container():
                 with st.container():
                     st.markdown('<div class="scrollable-container">', unsafe_allow_html=True)
