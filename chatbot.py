@@ -294,7 +294,6 @@ def app():
 
     chat_placeholder = st.empty()
     with chat_placeholder.container():
-        st.markdown("### Chat History")
         for chat in st.session_state.chat_history:
             st.write(f"**You:** {chat['user_question']}")
             st.write(f"**Bot:** {chat['response']}")
@@ -369,7 +368,6 @@ def app():
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
             with chat_placeholder.container():
-                st.markdown("### Chat History")
                 for chat in st.session_state.chat_history:
                     st.write(f"**You:** {chat['user_question']}")
                     st.write(f"**Bot:** {chat['response']}")
