@@ -292,6 +292,14 @@ def app():
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
 
+    # Ensure session state initialization
+    if "user_question" not in st.session_state:
+        st.session_state["user_question"] = ""
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
+    if "conversation_context" not in st.session_state:
+        st.session_state["conversation_context"] = ""
+
     st.markdown(
         """
         <style>
@@ -316,68 +324,6 @@ def app():
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
     clear_button = st.button("Clear Chat History", on_click=clear_chat)
-
-    if "retrievers" not in st.session_state:
-        st.session_state["retrievers"] = {}
-    
-    if "selected_retrievers" not in st.session_state:
-        st.session_state["selected_retrievers"] = []
-
-    if "answer" not in st.session_state:
-        st.session_state["answer"] = ""
-
-    if "request_fine_tuned_answer" not in st.session_state:
-        st.session_state["request_fine_tuned_answer"] = False
-
-    if 'fine_tuned_answer_expander_state' not in st.session_state:
-        st.session_state.fine_tuned_answer_expander_state = False
-
-    if 'show_fine_tuned_expander' not in st.session_state:
-        st.session_state.show_fine_tuned_expander = True
-
-    if 'parsed_result' not in st.session_state:
-        st.session_state.parsed_result = {}
-
-    with st.sidebar:
-        st.title("PDF Documents:")
-        for idx, doc in enumerate(docs, start=1):
-            retriever = doc.to_dict()
-            retriever['id'] = doc.id
-            retriever_name = retriever['retriever_name']
-            retriever_description = retriever['retriever_description']
-            with st.expander(retriever_name):
-                st.markdown(f"**Description:** {retriever_description}")
-
-                parsed_url = urlparse(retriever['document'])
-                file_name = os.path.basename(unquote(parsed_url.path))
-                signed_url = generate_signed_url('connext-chatbot-admin.appspot.com', file_name, st.secrets["service_account"])
-
-                st.markdown(f"_**File Name**_: {file_name}")
-                st.markdown(f"[Download PDF]({signed_url})", unsafe_allow_html=True)
-
-                retriever["signed_url"] = signed_url
-                st.session_state["retrievers"][retriever_name] = retriever
-
-        st.title("PDF Document Selection:")
-        st.session_state["selected_retrievers"] = st.multiselect("Select Retrievers", list(st.session_state["retrievers"].keys()))
-
-        if st.button("Submit & Process", key="process_button"):
-            if google_ai_api_key:
-                with st.spinner("Processing..."):
-                    selected_retrievers = st.session_state["selected_retrievers"]
-                    downloaded_files = []
-                    for name in selected_retrievers:
-                        signed_url = st.session_state["retrievers"][name]["signed_url"]
-                        file_path, _ = download_file_from_url(signed_url)
-                        if file_path:
-                            downloaded_files.append(file_path)
-                    
-                    raw_text = get_pdf_text(downloaded_files)
-                    text_chunks = get_text_chunks(raw_text)
-                    get_vector_store(text_chunks, google_ai_api_key)
-                    st.success("Processing complete.")
-            else:
-                st.error("Google API key is missing. Please provide it in the secrets configuration.")
 
     if submit_button:
         if user_question and google_ai_api_key:
