@@ -368,9 +368,6 @@ def app():
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
 
     if st.session_state.parsed_result is not None and "Answer" in st.session_state.parsed_result:
-        st.markdown("### Reply:")
-        st.write(st.session_state.parsed_result['Answer'])
-
         # Check if the answer is not directly in the context
         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
             if st.session_state.show_fine_tuned_expander:
