@@ -258,14 +258,14 @@ def app():
         for chat in st.session_state.chat_history:
             user_message = f"""
             <div style="display: flex; align-items: center; margin: 10px;">
-                <div style="background-color: #e0e0e0; border-radius: 10px; padding: 10px; max-width: 60%; text-align: left;">
+                <div style="background-color: transparent; border-radius: 10px; padding: 10px; max-width: 60%; text-align: left;">
                     <span>{chat['user_question']}</span>
                 </div>
             </div>
             """
             bot_response = f"""
             <div style="display: flex; align-items: center; justify-content: flex-end; margin: 10px;">
-                <div style="background-color: #c0e0c0; border-radius: 10px; padding: 10px; max-width: 60%; text-align: right;">
+                <div style="background-color: transparent; border-radius: 10px; padding: 10px; max-width: 60%; text-align: right;">
                     <span>{chat['response']}</span>
                 </div>
             </div>
@@ -346,14 +346,14 @@ def app():
                 for idx, chat in enumerate(st.session_state.chat_history):
                     user_message = f"""
                     <div style="display: flex; align-items: center; margin: 10px;">
-                        <div style="background-color: #e0e0e0; border-radius: 10px; padding: 10px; max-width: 60%; text-align: left;">
+                        <div style="background-color: transparent; border-radius: 10px; padding: 10px; max-width: 60%; text-align: left;">
                             <span>{chat['user_question']}</span>
                         </div>
                     </div>
                     """
                     bot_response = f"""
                     <div style="display: flex; align-items: center; justify-content: flex-end; margin: 10px;">
-                        <div style="background-color: #c0e0c0; border-radius: 10px; padding: 10px; max-width: 60%; text-align: right;">
+                        <div style="background-color: transparent; border-radius: 10px; padding: 10px; max-width: 60%; text-align: right;">
                             <span>{chat['response']}</span>
                         </div>
                     </div>
