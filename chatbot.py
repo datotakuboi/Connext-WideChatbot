@@ -256,8 +256,16 @@ def app():
     chat_placeholder = st.empty()
     with chat_placeholder.container():
         for chat in st.session_state.chat_history:
-            st.write(f"**You:** {chat['user_question']}")
-            st.write(f"**Bot:** {chat['response']}")
+            st.markdown(
+                f"""
+                <div style="display: flex; justify-content: {'flex-end' if chat['user_question'] else 'flex-start'};">
+                    <div style="max-width: 70%; padding: 10px; border-radius: 10px; margin: 10px 0; background-color: {'#DCF8C6' if chat['user_question'] else '#E1E1E1'};">
+                        <strong>{'You' if chat['user_question'] else 'Bot'}:</strong> {chat['user_question'] if chat['user_question'] else chat['response']}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
@@ -330,8 +338,16 @@ def app():
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
             with chat_placeholder.container():
                 for idx, chat in enumerate(st.session_state.chat_history):
-                    st.write(f"**You:** {chat['user_question']}")
-                    st.write(f"**Bot:** {chat['response']}")
+                    st.markdown(
+                        f"""
+                        <div style="display: flex; justify-content: {'flex-end' if chat['user_question'] else 'flex-start'};">
+                            <div style="max-width: 70%; padding: 10px; border-radius: 10px; margin: 10px 0; background-color: {'#DCF8C6' if chat['user_question'] else '#E1E1E1'};">
+                                <strong>{'You' if chat['user_question'] else 'Bot'}:</strong> {chat['user_question'] if chat['user_question'] else chat['response']}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
                     if idx == len(st.session_state.chat_history) - 1:
                         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
                             if st.session_state.show_fine_tuned_expander:
