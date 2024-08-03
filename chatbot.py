@@ -294,10 +294,25 @@ def app():
 
     chat_placeholder = st.empty()
 
+    st.markdown(
+        """
+        <style>
+        .chat-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     with st.expander("Chat History", expanded=True):
-        for chat in st.session_state.chat_history:
-            st.write(f"**You:** {chat['user_question']}")
-            st.write(f"**Bot:** {chat['response']}")
+        with st.container():
+            st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+            for chat in st.session_state.chat_history:
+                st.write(f"**You:** {chat['user_question']}")
+                st.write(f"**Bot:** {chat['response']}")
+            st.markdown('</div>', unsafe_allow_html=True)
 
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
@@ -369,6 +384,7 @@ def app():
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
             with chat_placeholder.container():
+                st.markdown('<div class="chat-container">', unsafe_allow_html=True)
                 for idx, chat in enumerate(st.session_state.chat_history):
                     st.write(f"**You:** {chat['user_question']}")
                     st.write(f"**Bot:** {chat['response']}")
@@ -387,6 +403,7 @@ def app():
                                         if st.button("No", key=f"no_button_{idx}"):
                                             st.session_state.show_fine_tuned_expander = False
                                             st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
 
     if st.session_state["request_fine_tuned_answer"]:
         fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
