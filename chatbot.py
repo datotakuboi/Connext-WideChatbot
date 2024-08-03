@@ -116,7 +116,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if (start_index == -1) or (end_index == -1) or (end_index < start_index):
+    if start_index == -1 or end_index == -1 or end_index < start_index:
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -215,8 +215,7 @@ def user_input(user_question, api_key):
         if parsed_result:
             st.session_state.chat_history.append({
                 "user_question": user_question,
-                "response": parsed_result["Answer"] if "Answer" in parsed_result else "No response generated.",
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                "response": parsed_result["Answer"] if "Answer" in parsed_result else "No response generated."
             })
             st.session_state.conversation_context += f"\n\nUser: {user_question}\nBot: {parsed_result['Answer']}"
 
@@ -257,8 +256,8 @@ def app():
     chat_placeholder = st.empty()
     with chat_placeholder.container():
         for chat in st.session_state.chat_history:
-            st.markdown(f"<div style='display: flex; align-items: center;'><img src='user_avatar_url' style='width: 32px; height: 32px; border-radius: 50%; margin-right: 8px;'><div style='background: #e1ffc7; padding: 8px; border-radius: 8px;'><strong>User:</strong> {chat['user_question']} <small>({chat['timestamp']})</small></div></div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='display: flex; align-items: center;'><img src='bot_avatar_url' style='width: 32px; height: 32px; border-radius: 50%; margin-right: 8px;'><div style='background: #f1f1f1; padding: 8px; border-radius: 8px;'><strong>Bot:</strong> {chat['response']} <small>({chat['timestamp']})</small></div></div>", unsafe_allow_html=True)
+            st.write(f"🧑 **You:** {chat['user_question']}")
+            st.write(f"🤖 **Bot:** {chat['response']}")
 
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
@@ -331,8 +330,8 @@ def app():
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
             with chat_placeholder.container():
                 for idx, chat in enumerate(st.session_state.chat_history):
-                    st.markdown(f"<div style='display: flex; align-items: center;'><img src='user_avatar_url' style='width: 32px; height: 32px; border-radius: 50%; margin-right: 8px;'><div style='background: #e1ffc7; padding: 8px; border-radius: 8px;'><strong>User:</strong> {chat['user_question']} <small>({chat['timestamp']})</small></div></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div style='display: flex; align-items: center;'><img src='bot_avatar_url' style='width: 32px; height: 32px; border-radius: 50%; margin-right: 8px;'><div style='background: #f1f1f1; padding: 8px; border-radius: 8px;'><strong>Bot:</strong> {chat['response']} <small>({chat['timestamp']})</small></div></div>", unsafe_allow_html=True)
+                    st.write(f"🧑 **You:** {chat['user_question']}")
+                    st.write(f"🤖 **Bot:** {chat['response']}")
                     if idx == len(st.session_state.chat_history) - 1:
                         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
                             if st.session_state.show_fine_tuned_expander:
