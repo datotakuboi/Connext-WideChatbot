@@ -304,17 +304,16 @@ def app():
     if st.button("Clear Chat History", on_click=clear_chat):
         pass
 
+    st.markdown("### Chat History")
+    for chat in st.session_state.chat_history:
+        st.markdown(f"<div style='border: 1px solid #ccc; padding: 10px; margin: 10px 0;'><strong>User:</strong> {chat['user_question']}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='border: 1px solid #ffd700; padding: 10px; margin: 10px 0; background-color: #fffacd;'><strong>Bot:</strong> {chat['response']}</div>", unsafe_allow_html=True)
+
     user_question = st.text_input("Ask a Question", key="user_question")
 
     if st.button("Submit"):
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
-
-    st.markdown("### Chat History")
-    for chat in st.session_state.chat_history:
-        st.markdown(f"**You:** {chat['user_question']}")
-        st.markdown(f"**Bot:** {chat['response']}")
-        st.markdown("---")  # Add a line separator between messages
 
     with st.sidebar:
         st.title("PDF Documents:")
