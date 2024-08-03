@@ -313,7 +313,7 @@ def app():
                 st.write(f"**Bot:** {chat['response']}")
             st.markdown('</div>', unsafe_allow_html=True)
 
-    user_question = st.text_input("Ask a Question", key="user_question")
+    user_question = st.text_input("Ask a Question", key="user_question", on_change=lambda: st.session_state.update({"user_question": ""}))
     submit_button = st.button("Submit", key="submit_button")
     clear_button = st.button("Clear Chat History", on_click=clear_chat)
 
@@ -382,6 +382,10 @@ def app():
     if submit_button:
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
+            # Clear the input field after submitting the question
+            st.session_state.user_question = ""
+            st.experimental_rerun()
+
             with chat_placeholder.container():
                 with st.container():
                     st.markdown('<div class="scrollable-container">', unsafe_allow_html=True)
