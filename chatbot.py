@@ -44,8 +44,8 @@ def google_oauth_link(flow):
     code = st.text_input("Enter the authorization code:")
     return code
 
+@st.cache_resource
 def load_creds():
-    """Load credentials from Streamlit secrets and handle them using a temporary file."""
     token_info = {
         'token': st.secrets["token"]["value"],
         'refresh_token': st.secrets["token"]["refresh_token"],
@@ -64,19 +64,22 @@ def load_creds():
     creds = Credentials.from_authorized_user_file(token_file_path, SCOPES)
 
     if creds and creds.expired and creds.refresh_token:
-        st.toast("Currently refreshing token...")
         creds.refresh(Request())
-
         with open(token_file_path, 'w') as token_file:
             token_file.write(creds.to_json())
 
     return creds
 
+@st.cache_resource
+def get_vector_store(text_chunks, api_key):
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
+    vector_store.save_local("faiss_index")
+
 def generate_signed_url(bucket_name, blob_name, service_account_info, expiration=3600):
     storage_client = storage.Client.from_service_account_info(service_account_info)
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
-
     url = blob.generate_signed_url(expiration=datetime.timedelta(seconds=expiration))
     return url
 
@@ -102,19 +105,12 @@ def download_file_from_url(url):
 def get_pdf_text(pdf_files):
     text = ""
     for pdf in pdf_files:
-        extracted_text = extract_text(pdf)
-        text += extracted_text
+        text += extract_text(pdf)
     return text
 
 def get_text_chunks(text):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
-    chunks = text_splitter.split_text(text)
-    return chunks
-
-def get_vector_store(text_chunks, api_key):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
-    vector_store.save_local("faiss_index")
+    return text_splitter.split_text(text)
 
 def extract_and_parse_json(text):
     start_index = text.find('{')
@@ -138,18 +134,14 @@ def is_expected_json_content(json_data):
         return False
     
     required_keys = ["Is_Answer_In_Context", "Answer"]
+    return all(key in data for key in required_keys)
 
-    if not all(key in data for key in required_keys):
-        return False
-    
-    return True
-
-def get_generative_model(response_mime_type = "text/plain"):
+def get_generative_model(response_mime_type="text/plain"):
     generation_config = {
-    "temperature": 0.4,
-    "top_p": 1,
-    "max_output_tokens": 8192,
-    "response_mime_type": response_mime_type
+        "temperature": 0.4,
+        "top_p": 1,
+        "max_output_tokens": 8192,
+        "response_mime_type": response_mime_type
     }
 
     if st.session_state["oauth_creds"] is not None:
@@ -158,12 +150,12 @@ def get_generative_model(response_mime_type = "text/plain"):
         st.session_state["oauth_creds"] = load_creds()
         genai.configure(credentials=st.session_state["oauth_creds"])
 
-    model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h' ,generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
-    return model
+    model_name = 'tunedModels/connext-wide-chatbot-ddal5ox9d38h' if response_mime_type == "text/plain" else "gemini-1.5-flash"
+    return genai.GenerativeModel(model_name, generation_config=generation_config)
 
-def generate_response(question, context, fine_tuned_knowledge = False):
-    prompt_using_fine_tune_knowledge = f"""
-    Based on your base or fine-tuned knowledge, can you answer the the following question?
+def generate_response(question, context, fine_tuned_knowledge=False):
+    prompt = (f"""
+    Based on your base or fine-tuned knowledge, can you answer the following question?
 
     --------------------
 
@@ -173,9 +165,7 @@ def generate_response(question, context, fine_tuned_knowledge = False):
     --------------------
 
     Answer:
-
-    """
-    prompt_with_context = f"""
+    """ if fine_tuned_knowledge else f"""
     Answer the question below as detailed as possible from the provided context below, make sure to provide all the details but if the answer is not in
     provided context. Try not to make up an answer just for the sake of answering a question.
 
@@ -187,55 +177,28 @@ def generate_response(question, context, fine_tuned_knowledge = False):
 
     Question:
     {question}
-    
+
     Provide your answer in a json format following the structure below:
     {{
         "Is_Answer_In_Context": <boolean>,
         "Answer": <answer (string)>,
     }}
-    """
+    """)
 
-    prompt = prompt_using_fine_tune_knowledge if fine_tuned_knowledge else prompt_with_context
     model = get_generative_model("text/plain" if fine_tuned_knowledge else "application/json")
-    
     return model.generate_content(prompt).text
 
-def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
-    parsed_result = {}
-    if not fine_tuned_knowledge:
-        response_json_valid = False
-        is_expected_json = False
-        max_attempts = 3
-        while not response_json_valid and max_attempts > 0:
-            response = ""
-            try:
-                response = generate_response(user_question, context , fine_tuned_knowledge)
-            except Exception as e:
-                max_attempts -= 1
-                st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
-                continue
-
-            parsed_result, response_json_valid = extract_and_parse_json(response)
-            if response_json_valid == False:
-                max_attempts -= 1
-                st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
-                continue
-
-            is_expected_json = is_expected_json_content(parsed_result)  
-            if is_expected_json == False:
-                max_attempts -= 1
-                st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
-                continue
-            
-            break
-    else:
+def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
+    max_attempts = 3
+    for attempt in range(max_attempts):
         try:
-            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
+            response = generate_response(user_question, context, fine_tuned_knowledge)
+            parsed_result, response_json_valid = extract_and_parse_json(response)
+            if response_json_valid and is_expected_json_content(parsed_result):
+                return parsed_result
         except Exception as e:
-            parsed_result = ""
-            st.toast(f"Failed to create a response for your query.")
-
-    return parsed_result
+            st.toast(f"Failed to create a response for your query. Error: {str(e)} \nTrying again... Retries left: {max_attempts - attempt - 1}")
+    return ""
 
 def user_input(user_question, api_key):
     with st.spinner("Processing..."):
@@ -246,7 +209,6 @@ def user_input(user_question, api_key):
         
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
-        # Combine previous conversation context with the current context
         full_context = f"{st.session_state.conversation_context}\n\n{context}"
 
         parsed_result = try_get_answer(user_question, full_context)
@@ -255,7 +217,6 @@ def user_input(user_question, api_key):
                 "user_question": user_question,
                 "response": parsed_result["Answer"] if "Answer" in parsed_result else "No response generated."
             })
-            # Update the conversation context
             st.session_state.conversation_context += f"\n\nUser: {user_question}\nBot: {parsed_result['Answer']}"
 
     return parsed_result
@@ -304,7 +265,7 @@ def app():
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
-    
+
     if "selected_retrievers" not in st.session_state:
         st.session_state["selected_retrievers"] = []
 
@@ -371,7 +332,7 @@ def app():
                 for idx, chat in enumerate(st.session_state.chat_history):
                     st.write(f"**You:** {chat['user_question']}")
                     st.write(f"**Bot:** {chat['response']}")
-                    if idx == len(st.session_state.chat_history) - 1:  # Check the last question
+                    if idx == len(st.session_state.chat_history) - 1:
                         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
                             if st.session_state.show_fine_tuned_expander:
                                 with st.expander("Get fine-tuned answer?", expanded=True):
