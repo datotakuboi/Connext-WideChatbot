@@ -259,7 +259,6 @@ def app():
             user_message = f"""
             <div style="display: flex; align-items: center; margin: 10px;">
                 <div style="background-color: #f0f0f0; border-radius: 10px; padding: 10px; max-width: 60%;">
-                    <img src="https://example.com/user_icon.png" alt="user" style="width: 40px; height: 40px; margin-right: 10px;">
                     <span>{chat['user_question']}</span>
                 </div>
             </div>
@@ -267,7 +266,6 @@ def app():
             bot_response = f"""
             <div style="display: flex; align-items: center; margin: 10px;">
                 <div style="background-color: #d0f0d0; border-radius: 10px; padding: 10px; max-width: 60%; margin-left: auto;">
-                    <img src="https://example.com/bot_icon.png" alt="bot" style="width: 40px; height: 40px; margin-right: 10px;">
                     <span>{chat['response']}</span>
                 </div>
             </div>
@@ -349,7 +347,6 @@ def app():
                     user_message = f"""
                     <div style="display: flex; align-items: center; margin: 10px;">
                         <div style="background-color: #f0f0f0; border-radius: 10px; padding: 10px; max-width: 60%;">
-                            <img src="https://example.com/user_icon.png" alt="user" style="width: 40px; height: 40px; margin-right: 10px;">
                             <span>{chat['user_question']}</span>
                         </div>
                     </div>
@@ -357,7 +354,6 @@ def app():
                     bot_response = f"""
                     <div style="display: flex; align-items: center; margin: 10px;">
                         <div style="background-color: #d0f0d0; border-radius: 10px; padding: 10px; max-width: 60%; margin-left: auto;">
-                            <img src="https://example.com/bot_icon.png" alt="bot" style="width: 40px; height: 40px; margin-right: 10px;">
                             <span>{chat['response']}</span>
                         </div>
                     </div>
