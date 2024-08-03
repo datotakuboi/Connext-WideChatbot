@@ -119,8 +119,8 @@ def get_vector_store(text_chunks, api_key):
 def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
-
-    if (start_index == -1 or end_index == -1 or end_index < start_index):
+    
+    if start_index == -1 or end_index == -1 or end_index < start_index:
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -136,20 +136,20 @@ def is_expected_json_content(json_data):
         data = json.loads(json_data) if isinstance(json_data, str) else json_data
     except json.JSONDecodeError:
         return False
-
+    
     required_keys = ["Is_Answer_In_Context", "Answer"]
 
     if not all(key in data for key in required_keys):
         return False
-
+    
     return True
 
-def get_generative_model(response_mime_type="text/plain"):
+def get_generative_model(response_mime_type = "text/plain"):
     generation_config = {
-        "temperature": 0.4,
-        "top_p": 1,
-        "max_output_tokens": 8192,
-        "response_mime_type": response_mime_type
+    "temperature": 0.4,
+    "top_p": 1,
+    "max_output_tokens": 8192,
+    "response_mime_type": response_mime_type
     }
 
     if st.session_state["oauth_creds"] is not None:
@@ -158,16 +158,10 @@ def get_generative_model(response_mime_type="text/plain"):
         st.session_state["oauth_creds"] = load_creds()
         genai.configure(credentials=st.session_state["oauth_creds"])
 
-    model = genai.GenerativeModel(
-        'tunedModels/connext-wide-chatbot-ddal5ox9d38h',
-        generation_config=generation_config
-    ) if response_mime_type == "text/plain" else genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
-        generation_config=generation_config
-    )
+    model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h' ,generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
     return model
 
-def generate_response(question, context, fine_tuned_knowledge=False):
+def generate_response(question, context, fine_tuned_knowledge = False):
     prompt_using_fine_tune_knowledge = f"""
     Based on your base or fine-tuned knowledge, can you answer the the following question?
 
@@ -193,7 +187,7 @@ def generate_response(question, context, fine_tuned_knowledge=False):
 
     Question:
     {question}
-
+    
     Provide your answer in a json format following the structure below:
     {{
         "Is_Answer_In_Context": <boolean>,
@@ -203,10 +197,10 @@ def generate_response(question, context, fine_tuned_knowledge=False):
 
     prompt = prompt_using_fine_tune_knowledge if fine_tuned_knowledge else prompt_with_context
     model = get_generative_model("text/plain" if fine_tuned_knowledge else "application/json")
-
+    
     return model.generate_content(prompt).text
 
-def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
+def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
     parsed_result = {}
     if not fine_tuned_knowledge:
         response_json_valid = False
@@ -215,7 +209,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
         while not response_json_valid and max_attempts > 0:
             response = ""
             try:
-                response = generate_response(user_question, context, fine_tuned_knowledge)
+                response = generate_response(user_question, context , fine_tuned_knowledge)
             except Exception as e:
                 max_attempts -= 1
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
@@ -227,16 +221,16 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
 
-            is_expected_json = is_expected_json_content(parsed_result)
+            is_expected_json = is_expected_json_content(parsed_result)  
             if is_expected_json == False:
                 max_attempts -= 1
                 st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
-
+            
             break
     else:
         try:
-            parsed_result = generate_response(user_question, context, fine_tuned_knowledge)
+            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
         except Exception as e:
             parsed_result = ""
             st.toast(f"Failed to create a response for your query.")
@@ -249,7 +243,7 @@ def user_input(user_question, api_key):
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
         new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
         docs = new_db.similarity_search(user_question)
-
+        
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
         # Combine previous conversation context with the current context
@@ -298,26 +292,11 @@ def app():
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
 
-    st.markdown(
-        """
-        <style>
-        .scrollable-container {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
     chat_placeholder = st.empty()
     with chat_placeholder.container():
-        with st.container():
-            st.markdown('<div class="scrollable-container">', unsafe_allow_html=True)
-            for chat in st.session_state.chat_history:
-                st.write(f"**You:** {chat['user_question']}")
-                st.write(f"**Bot:** {chat['response']}")
-            st.markdown('</div>', unsafe_allow_html=True)
+        for chat in st.session_state.chat_history:
+            st.write(f"**You:** {chat['user_question']}")
+            st.write(f"**Bot:** {chat['response']}")
 
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
@@ -325,7 +304,7 @@ def app():
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
-
+    
     if "selected_retrievers" not in st.session_state:
         st.session_state["selected_retrievers"] = []
 
@@ -377,7 +356,7 @@ def app():
                         file_path, _ = download_file_from_url(signed_url)
                         if file_path:
                             downloaded_files.append(file_path)
-
+                    
                     raw_text = get_pdf_text(downloaded_files)
                     text_chunks = get_text_chunks(raw_text)
                     get_vector_store(text_chunks, google_ai_api_key)
@@ -389,27 +368,24 @@ def app():
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
             with chat_placeholder.container():
-                with st.container():
-                    st.markdown('<div class="scrollable-container">', unsafe_allow_html=True)
-                    for idx, chat in enumerate(st.session_state.chat_history):
-                        st.write(f"**You:** {chat['user_question']}")
-                        st.write(f"**Bot:** {chat['response']}")
-                        if idx == len(st.session_state.chat_history) - 1:  # Check the last question
-                            if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
-                                if st.session_state.show_fine_tuned_expander:
-                                    with st.expander("Get fine-tuned answer?", expanded=False):
-                                        st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
-                                        col1, col2, _ = st.columns([3, 3, 6])
-                                        with col1:
-                                            if st.button("Yes", key=f"yes_button_{idx}"):
-                                                st.session_state["request_fine_tuned_answer"] = True
-                                                st.session_state.show_fine_tuned_expander = False
-                                                st.rerun()
-                                        with col2:
-                                            if st.button("No", key=f"no_button_{idx}"):
-                                                st.session_state.show_fine_tuned_expander = False
-                                                st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
+                for idx, chat in enumerate(st.session_state.chat_history):
+                    st.write(f"**You:** {chat['user_question']}")
+                    st.write(f"**Bot:** {chat['response']}")
+                    if idx == len(st.session_state.chat_history) - 1:  # Check the last question
+                        if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
+                            if st.session_state.show_fine_tuned_expander:
+                                with st.expander("Get fine-tuned answer?", expanded=False):
+                                    st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
+                                    col1, col2, _ = st.columns([3, 3, 6])
+                                    with col1:
+                                        if st.button("Yes", key=f"yes_button_{idx}"):
+                                            st.session_state["request_fine_tuned_answer"] = True
+                                            st.session_state.show_fine_tuned_expander = False
+                                            st.rerun()
+                                    with col2:
+                                        if st.button("No", key=f"no_button_{idx}"):
+                                            st.session_state.show_fine_tuned_expander = False
+                                            st.rerun()
 
     if st.session_state["request_fine_tuned_answer"]:
         fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
