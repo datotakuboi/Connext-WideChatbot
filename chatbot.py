@@ -292,6 +292,11 @@ def app():
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
 
+    st.markdown("### Chat History")
+    for chat in st.session_state.chat_history:
+        st.write(f"**You:** {chat['user_question']}")
+        st.write(f"**Bot:** {chat['response']}")
+
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
     clear_button = st.button("Clear Chat History", on_click=clear_chat)
@@ -391,11 +396,6 @@ def app():
         else:
             st.error("Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False
-
-    st.markdown("### Chat History")
-    for chat in st.session_state.chat_history:
-        st.write(f"**You:** {chat['user_question']}")
-        st.write(f"**Bot:** {chat['response']}")
 
 if __name__ == "__main__":
     app()
