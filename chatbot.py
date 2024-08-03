@@ -292,11 +292,26 @@ def app():
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
 
+    st.markdown(
+        """
+        <style>
+        .scrollable-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     chat_placeholder = st.empty()
     with chat_placeholder.container():
-        for chat in st.session_state.chat_history:
-            st.write(f"**You:** {chat['user_question']}")
-            st.write(f"**Bot:** {chat['response']}")
+        with st.container():
+            st.markdown('<div class="scrollable-container">', unsafe_allow_html=True)
+            for chat in st.session_state.chat_history:
+                st.write(f"**You:** {chat['user_question']}")
+                st.write(f"**Bot:** {chat['response']}")
+            st.markdown('</div>', unsafe_allow_html=True)
 
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
@@ -368,25 +383,27 @@ def app():
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
             with chat_placeholder.container():
-                for idx, chat in enumerate(st.session_state.chat_history):
-                    st.write(f"**You:** {chat['user_question']}")
-                    st.write(f"**Bot:** {chat['response']}")
-                    if idx == len(st.session_state.chat_history) - 1:  # Check the last question
-                        if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
-                            if st.session_state.show_fine_tuned_expander:
-                                with st.expander("Get fine-tuned answer?", expanded=False):
-                                    st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
-                                    col1, col2, _ = st.columns([3, 3, 6])
-                                    with col1:
-                                        if st.button("Yes", key=f"yes_button_{idx}"):
-                                            st.session_state["request_fine_tuned_answer"] = True
-                                            st.session_state.show_fine_tuned_expander = False
-                                            st.experimental_rerun()
-                                    with col2:
-                                        if st.button("No", key=f"no_button_{idx}"):
-                                            st.session_state.show_fine_tuned_expander = False
-                                            st.experimental_rerun()
-            st.session_state.user_question = ""  # Clear the question input field after submission
+                with st.container():
+                    st.markdown('<div class="scrollable-container">', unsafe_allow_html=True)
+                    for idx, chat in enumerate(st.session_state.chat_history):
+                        st.write(f"**You:** {chat['user_question']}")
+                        st.write(f"**Bot:** {chat['response']}")
+                        if idx == len(st.session_state.chat_history) - 1:  # Check the last question
+                            if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
+                                if st.session_state.show_fine_tuned_expander:
+                                    with st.expander("Get fine-tuned answer?", expanded=False):
+                                        st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
+                                        col1, col2, _ = st.columns([3, 3, 6])
+                                        with col1:
+                                            if st.button("Yes", key=f"yes_button_{idx}"):
+                                                st.session_state["request_fine_tuned_answer"] = True
+                                                st.session_state.show_fine_tuned_expander = False
+                                                st.rerun()
+                                        with col2:
+                                            if st.button("No", key=f"no_button_{idx}"):
+                                                st.session_state.show_fine_tuned_expander = False
+                                                st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
 
     if st.session_state["request_fine_tuned_answer"]:
         fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
