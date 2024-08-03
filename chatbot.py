@@ -29,6 +29,9 @@ if "chat_history" not in st.session_state:
 if "conversation_context" not in st.session_state:
     st.session_state["conversation_context"] = ""
 
+if "user_question" not in st.session_state:
+    st.session_state["user_question"] = ""
+
 # Initialize Firebase SDK
 if not firebase_admin._apps:
     cred = credentials.Certificate(dict(st.secrets["service_account"]))
@@ -259,8 +262,8 @@ def app():
             st.write(f"🧑 **You:** {chat['user_question']}")
             st.write(f"🤖 **Bot:** {chat['response']}")
 
-    user_question = st.text_input("Ask a Question", key="user_question")
-    submit_button = st.button("Submit", key="submit_button")
+    user_question = st.text_input("Ask a Question", key="user_question_input")
+    submit_button = st.button("Submit")
     clear_button = st.button("Clear Chat History", on_click=clear_chat)
 
     if "retrievers" not in st.session_state:
@@ -328,6 +331,8 @@ def app():
     if submit_button:
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
+            st.session_state["user_question"] = ""  # Clear the input field
+            st.session_state["user_question_input"] = ""  # Clear the text input widget
             with chat_placeholder.container():
                 for idx, chat in enumerate(st.session_state.chat_history):
                     st.write(f"🧑 **You:** {chat['user_question']}")
