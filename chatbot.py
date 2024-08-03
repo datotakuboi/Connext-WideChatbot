@@ -256,8 +256,24 @@ def app():
     chat_placeholder = st.empty()
     with chat_placeholder.container():
         for chat in st.session_state.chat_history:
-            st.write(f"**You:** {chat['user_question']}")
-            st.write(f"**Bot:** {chat['response']}")
+            user_message = f"""
+            <div style="display: flex; align-items: center; margin: 10px;">
+                <div style="background-color: #f0f0f0; border-radius: 10px; padding: 10px; max-width: 60%;">
+                    <img src="https://example.com/user_icon.png" alt="user" style="width: 40px; height: 40px; margin-right: 10px;">
+                    <span>{chat['user_question']}</span>
+                </div>
+            </div>
+            """
+            bot_response = f"""
+            <div style="display: flex; align-items: center; margin: 10px;">
+                <div style="background-color: #d0f0d0; border-radius: 10px; padding: 10px; max-width: 60%; margin-left: auto;">
+                    <img src="https://example.com/bot_icon.png" alt="bot" style="width: 40px; height: 40px; margin-right: 10px;">
+                    <span>{chat['response']}</span>
+                </div>
+            </div>
+            """
+            st.markdown(user_message, unsafe_allow_html=True)
+            st.markdown(bot_response, unsafe_allow_html=True)
 
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
@@ -330,8 +346,24 @@ def app():
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
             with chat_placeholder.container():
                 for idx, chat in enumerate(st.session_state.chat_history):
-                    st.write(f"**You:** {chat['user_question']}")
-                    st.write(f"**Bot:** {chat['response']}")
+                    user_message = f"""
+                    <div style="display: flex; align-items: center; margin: 10px;">
+                        <div style="background-color: #f0f0f0; border-radius: 10px; padding: 10px; max-width: 60%;">
+                            <img src="https://example.com/user_icon.png" alt="user" style="width: 40px; height: 40px; margin-right: 10px;">
+                            <span>{chat['user_question']}</span>
+                        </div>
+                    </div>
+                    """
+                    bot_response = f"""
+                    <div style="display: flex; align-items: center; margin: 10px;">
+                        <div style="background-color: #d0f0d0; border-radius: 10px; padding: 10px; max-width: 60%; margin-left: auto;">
+                            <img src="https://example.com/bot_icon.png" alt="bot" style="width: 40px; height: 40px; margin-right: 10px;">
+                            <span>{chat['response']}</span>
+                        </div>
+                    </div>
+                    """
+                    st.markdown(user_message, unsafe_allow_html=True)
+                    st.markdown(bot_response, unsafe_allow_html=True)
                     if idx == len(st.session_state.chat_history) - 1:
                         if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
                             if st.session_state.show_fine_tuned_expander:
