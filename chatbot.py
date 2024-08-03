@@ -264,8 +264,8 @@ def app():
             </div>
             """
             bot_response = f"""
-            <div style="display: flex; align-items: center; margin: 10px;">
-                <div style="background-color: #d0f0d0; border-radius: 10px; padding: 10px; max-width: 60%; margin-left: auto;">
+            <div style="display: flex; align-items: center; justify-content: flex-end; margin: 10px;">
+                <div style="background-color: #d0f0d0; border-radius: 10px; padding: 10px; max-width: 60%;">
                     <span>{chat['response']}</span>
                 </div>
             </div>
@@ -352,8 +352,8 @@ def app():
                     </div>
                     """
                     bot_response = f"""
-                    <div style="display: flex; align-items: center; margin: 10px;">
-                        <div style="background-color: #d0f0d0; border-radius: 10px; padding: 10px; max-width: 60%; margin-left: auto;">
+                    <div style="display: flex; align-items: center; justify-content: flex-end; margin: 10px;">
+                        <div style="background-color: #d0f0d0; border-radius: 10px; padding: 10px; max-width: 60%;">
                             <span>{chat['response']}</span>
                         </div>
                     </div>
