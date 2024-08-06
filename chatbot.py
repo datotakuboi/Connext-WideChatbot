@@ -99,7 +99,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if start_index == -1 or end_index == -1 or end_index < start_index:
+    if (start_index == -1 or end_index == -1 or end_index < start_index):
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -249,6 +249,19 @@ def user_input(user_question, api_key):
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
         parsed_result = try_get_answer(user_question, context)
+        
+        if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
+            st.toast("Answer not found in the selected document. Attempting to scan other documents...")
+            remaining_docs = [d for d in st.session_state["retrievers"].values() if d["file_path"] not in context]
+            if remaining_docs:
+                remaining_context = "\n\n--------------------------\n\n".join([extract_text(d["file_path"]) for d in remaining_docs])
+                parsed_result = try_get_answer(user_question, remaining_context)
+                if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
+                    st.toast("Attempting to generate an answer based on fine-tuned knowledge...")
+                    parsed_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
+            else:
+                st.toast("No other documents to scan. Attempting to generate an answer based on fine-tuned knowledge...")
+                parsed_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
     
     return parsed_result
 
@@ -332,10 +345,10 @@ def app():
             for chat in st.session_state.chat_history:
                 st.markdown(f"""
                 <div class="user-message-container">
-                    <div class="user-message">🧑 **You:** {chat['question']}</div>
+                    <div class="user-message">{chat['question']}</div>
                 </div>
                 <div class="bot-message-container">
-                    <div class="bot-message">🤖 **Bot:** {chat['answer']['Answer']}</div>
+                    <div class="bot-message">{chat['answer']['Answer']}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
