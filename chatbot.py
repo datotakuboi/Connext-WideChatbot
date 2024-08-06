@@ -11,10 +11,9 @@ import os
 import json
 import requests
 import tempfile
-from functools import partial
 import datetime
 import pytz
-import mimetypes
+from functools import lru_cache
 from pdfminer.high_level import extract_text
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -39,6 +38,7 @@ def google_oauth_link(flow):
     code = st.text_input("Enter the authorization code:")
     return code
 
+@lru_cache(maxsize=32)
 def fetch_token_data():
     """Fetch the token data from Firestore."""
     try:
@@ -69,108 +69,49 @@ def load_creds():
     token_doc, doc_id = fetch_token_data()
 
     if token_doc:
-        account = token_doc.get("account")
-        client_id = token_doc.get("client_id")
-        client_secret = token_doc.get("client_secret")
-        expiry = token_doc.get("expiry")
-        refresh_token = token_doc.get("refresh_token")
-        scopes = token_doc.get("scopes")
-        token = token_doc.get("token")
-        token_uri = token_doc.get("token_uri")
-        universe_domain = token_doc.get("universe_domain")
+        creds = Credentials.from_authorized_user_info(token_doc, SCOPES)
 
-        st.session_state['account'] = account
-        st.session_state['client_id'] = client_id
-        st.session_state['client_secret'] = client_secret
-        st.session_state['expiry'] = expiry
-        st.session_state['refresh_token'] = refresh_token
-        st.session_state['scopes'] = scopes
-        st.session_state['token'] = token
-        st.session_state['token_uri'] = token_uri
-        st.session_state['universe_domain'] = universe_domain
-
-        temp_dir = tempfile.mkdtemp()
-        token_file_path = os.path.join(temp_dir, 'token.json')
-        with open(token_file_path, 'w') as token_file:
-            json.dump(token_doc, token_file)
-
-        creds = Credentials.from_authorized_user_file(token_file_path, scopes)
-
-        if creds.expired:
-            token_doc, _ = fetch_token_data()
-            if token_doc:
-                new_refresh_token = token_doc.get("refresh_token")
-                if creds.refresh_token and creds.refresh_token == new_refresh_token:
-                    st.toast("Refreshing token...")
-                    creds.refresh(Request())
-                    new_token_data = {
-                        "account": account,
-                        "client_id": client_id,
-                        "client_secret": client_secret,
-                        "expiry": creds.expiry.isoformat() if creds.expiry else expiry,
-                        "refresh_token": creds.refresh_token,
-                        "scopes": scopes,
-                        "token": creds.token,
-                        "token_uri": token_uri,
-                        "universe_domain": universe_domain
-                    }
-                    
-                    st.session_state.db.collection('Token').document(doc_id).set(new_token_data)
-                    st.session_state.update(new_token_data)
-                    with open(token_file_path, 'w') as token_file:
-                        json.dump(new_token_data, token_file)
-                else:
-                    st.error("Refresh token mismatch or missing. Please log in again.")
-                    return None
-            else:
-                st.error("Failed to re-fetch token data from Firestore.")
-                return None
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            st.session_state.db.collection('Token').document(doc_id).set(creds.to_json())
     else:
         return None
 
     return creds
 
+@lru_cache(maxsize=32)
 def download_file_to_temp(url):
     # Create a temporary directory
     storage_client = storage.Client.from_service_account_info(st.session_state["connext_chatbot_admin_credentials"])
     bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
     temp_dir = tempfile.mkdtemp()
 
-    # Download the file
-    response = requests.get(url)
     parsed_url = urlparse(url)
     file_name = os.path.basename(unquote(parsed_url.path))
 
     blob = bucket.blob(file_name)
-    
-    # Create the full path with the preferred filename
     temp_file_path = os.path.join(temp_dir, file_name)
-
     blob.download_to_filename(temp_file_path)
 
     return temp_file_path, file_name
 
 def extract_and_parse_json(text):
-    # Find the first opening and the last closing curly brackets
     start_index = text.find('{')
     end_index = text.rfind('}')
     
     if start_index == -1 or end_index == -1 or end_index < start_index:
-        return None, False  # Proper JSON structure not found
+        return None, False
 
-    # Extract the substring that contains the JSON
     json_str = text[start_index:end_index + 1]
 
     try:
-        # Attempt to parse the JSON
         parsed_json = json.loads(json_str)
         return parsed_json, True
     except json.JSONDecodeError:
-        return None, False  # JSON parsing failed
-    
+        return None, False
+
 def is_expected_json_content(json_data):
     try:
-        # Try to load the JSON data
         data = json.loads(json_data) if isinstance(json_data, str) else json_data
     except json.JSONDecodeError:
         return False
@@ -180,7 +121,7 @@ def is_expected_json_content(json_data):
     if not all(key in data for key in required_keys):
         return False
     
-    return True #All checks passed for the specified type
+    return True
 
 def get_pdf_text(pdf_docs):
     text = ""
@@ -278,13 +219,13 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
                 continue
 
             parsed_result, response_json_valid = extract_and_parse_json(response)
-            if response_json_valid == False:
+            if not response_json_valid:
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
 
             is_expected_json = is_expected_json_content(parsed_result)  
-            if is_expected_json == False:
+            if not is_expected_json:
                 st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
@@ -408,11 +349,9 @@ def app():
                 if st.button("Yes", key=f"yes_button"):
                     st.session_state.request_fine_tuned_answer = True
                     st.session_state.show_fine_tuned_expander = False
-                    st.rerun()
             with col2:
                 if st.button("No", key=f"no_button"):
                     st.session_state.show_fine_tuned_expander = False
-                    st.rerun()
 
     if st.session_state["request_fine_tuned_answer"]:
         if st.session_state.chat_history:
@@ -429,15 +368,15 @@ def app():
         st.title("PDF Documents:")
         for idx, doc in enumerate(docs, start=1):
             retriever = doc.to_dict()
-            retriever['id'] = doc.id  # Add document ID to the retriever dictionary
+            retriever['id'] = doc.id
             retriever_name = retriever['retriever_name']
             retriever_description = retriever['retriever_description']
             with st.expander(retriever_name):
                 st.markdown(f"**Description:** {retriever_description}")
-                file_path, file_name = download_file_to_temp(retriever['document']) # Get the document file path and file name
+                file_path, file_name = download_file_to_temp(retriever['document'])
                 st.markdown(f"_**File Name**_: {file_name}")
                 retriever["file_path"] = file_path 
-                st.session_state["retrievers"][retriever_name] = retriever #populate the retriever dictionary
+                st.session_state["retrievers"][retriever_name] = retriever
         st.title("PDF Document Selection:")
         st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))  
         
