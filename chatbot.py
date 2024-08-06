@@ -99,7 +99,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if (start_index == -1 or end_index == -1 or end_index < start_index):
+    if start_index == -1 or end_index == -1 or end_index < start_index:
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -140,7 +140,7 @@ def get_vector_store(text_chunks, api_key):
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
 
-def get_generative_model(response_mime_type="text/plain"):
+def get_generative_model(response_mime_type = "text/plain"):
     generation_config = {
         "temperature": 0.4,
         "top_p": 1,
@@ -160,9 +160,9 @@ def get_generative_model(response_mime_type="text/plain"):
     model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h', generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
     return model
 
-def generate_response(question, context, fine_tuned_knowledge=False):
+def generate_response(question, context, fine_tuned_knowledge = False):
     prompt_using_fine_tune_knowledge = f"""
-    Based on your base or fine-tuned knowledge, can you answer the following question?
+    Based on your base or fine-tuned knowledge, can you answer the the following question?
 
     --------------------
 
@@ -202,7 +202,7 @@ def generate_response(question, context, fine_tuned_knowledge=False):
 
     return model.generate_content(prompt).text
 
-def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
+def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
     parsed_result = {}
     if not fine_tuned_knowledge:
         response_json_valid = False
@@ -212,7 +212,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
             response = ""
 
             try:
-                response = generate_response(user_question, context, fine_tuned_knowledge)
+                response = generate_response(user_question, context , fine_tuned_knowledge)
             except Exception as e:
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
@@ -233,37 +233,23 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
             break
     else:
         try:
-            parsed_result = generate_response(user_question, context, fine_tuned_knowledge)
+            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
         except Exception as e:
             st.toast(f"Failed to create a response for your query.")
 
     return parsed_result
 
-def user_input(user_question, api_key, selected_retrievers):
+def user_input(user_question, api_key):
     with st.spinner("Processing..."):
-        st.session_state.show_fine_tuned_expander = False
+        st.session_state.show_fine_tuned_expander = True
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
         new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-
-        if selected_retrievers:
-            docs = new_db.similarity_search(user_question)
-        else:
-            docs = []
-
+        docs = new_db.similarity_search(user_question)
+        
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
         parsed_result = try_get_answer(user_question, context)
-
-        if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
-            st.toast("Answer not found in the selected document(s). Attempting to find the answer from other documents.")
-            other_docs = new_db.similarity_search(user_question)
-            other_context = "\n\n--------------------------\n\n".join([doc.page_content for doc in other_docs])
-            parsed_result = try_get_answer(user_question, other_context)
-
-            if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
-                st.toast("Answer not found in any document. Suggesting to use fine-tuned model.")
-                st.session_state.show_fine_tuned_expander = True
-
+    
     return parsed_result
 
 def app():
@@ -383,7 +369,7 @@ def app():
 
     if submit_button:
         if user_question and google_ai_api_key:
-            parsed_result = user_input(user_question, google_ai_api_key, st.session_state["selected_retrievers"])
+            parsed_result = user_input(user_question, google_ai_api_key)
             st.session_state.parsed_result = parsed_result
             if "Answer" in parsed_result:
                 st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
