@@ -316,6 +316,15 @@ def app():
         cred = credentials.Certificate(st.secrets["service_account"])
         firebase_admin.initialize_app(cred)
 
+    # Load the credentials into the session state
+    if "connext_chatbot_admin_credentials" not in st.session_state:
+        st.session_state["connext_chatbot_admin_credentials"] = st.secrets["service_account"]
+
+    # Initialize Firebase Admin SDK
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(st.secrets["service_account"])
+        firebase_admin.initialize_app(cred)
+
     # Get Firestore client
     firestore_db = firestore.client()
     st.session_state.db = firestore_db
