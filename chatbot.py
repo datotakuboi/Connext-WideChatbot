@@ -345,10 +345,10 @@ def app():
             for chat in st.session_state.chat_history:
                 st.markdown(f"""
                 <div class="user-message-container">
-                    <div class="user-message">{chat['question']}</div>
+                    <div class="user-message">🧑 **You:** {chat['question']}</div>
                 </div>
                 <div class="bot-message-container">
-                    <div class="bot-message">{chat['answer']['Answer']}</div>
+                    <div class="bot-message">🤖 **Bot:** {chat['answer']['Answer']}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -382,8 +382,6 @@ def app():
 
     if submit_button:
         if user_question and google_ai_api_key:
-            # Build context from chat history
-            context = "\n\n".join([f"User: {chat['question']}\nBot: {chat['answer']['Answer']}" for chat in st.session_state.chat_history])
             parsed_result = user_input(user_question, google_ai_api_key)
             st.session_state.parsed_result = parsed_result
             if "Answer" in parsed_result:
