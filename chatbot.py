@@ -280,7 +280,7 @@ def app():
     with col3:
         st.write(' ')
 
-    st.markdown('## Welcome to :blue[Connext Chatbot] :robot_face:')
+    st.markdown('## Welcome to :blue[Connext Chatbot]')
 
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
@@ -332,10 +332,10 @@ def app():
             for chat in st.session_state.chat_history:
                 st.markdown(f"""
                 <div class="user-message-container">
-                    <div class="user-message">🧑 **You:** {chat['question']}</div>
+                    <div class="user-message">{chat['question']}</div>
                 </div>
                 <div class="bot-message-container">
-                    <div class="bot-message">🤖 **Bot:** {chat['answer']['Answer']}</div>
+                    <div class="bot-message">{chat['answer']['Answer']}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
