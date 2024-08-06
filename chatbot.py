@@ -385,8 +385,10 @@ def app():
                     selected_files_urls = [st.session_state["retrievers"][name]["document"] for name in st.session_state["selected_retrievers"]]
                     downloaded_files = asyncio.run(download_files(selected_files_urls))
 
-                    for name, (file_path, _) in zip(st.session_state["selected_retrievers"], downloaded_files):
+                    for name, (file_path, file_name) in zip(st.session_state["selected_retrievers"], downloaded_files):
                         st.session_state["retrievers"][name]["file_path"] = file_path
+                        download_link = f'<a href="file://{file_path}" download="{file_name}">Download {file_name}</a>'
+                        st.sidebar.markdown(download_link, unsafe_allow_html=True)
 
                     selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
                     raw_text = get_pdf_text(selected_files)
