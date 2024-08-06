@@ -347,7 +347,7 @@ def app():
 
     if clear_history_button:
         st.session_state.chat_history = []
-        display_chat_history()
+        st.rerun()
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
