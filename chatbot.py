@@ -155,7 +155,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if (start_index == -1 or end_index == -1 or end_index < start_index):
+    if start_index == -1 or end_index == -1 or end_index < start_index:
         return None, False  # Proper JSON structure not found
 
     # Extract the substring that contains the JSON
@@ -207,13 +207,16 @@ def get_generative_model(response_mime_type = "text/plain"):
         "response_mime_type": response_mime_type
     }
 
+    if "oauth_creds" not in st.session_state or st.session_state["oauth_creds"] is None:
+        st.session_state["oauth_creds"] = load_creds()
+
     if st.session_state["oauth_creds"] is not None:
         genai.configure(credentials=st.session_state["oauth_creds"])
     else:
-        st.session_state["oauth_creds"] = load_creds()
-        genai.configure(credentials=st.session_state["oauth_creds"])
+        st.error("Failed to load OAuth credentials.")
+        return None
 
-    model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h' ,generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
+    model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h', generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
     return model
 
 def generate_response(question, context, fine_tuned_knowledge = False):
@@ -253,6 +256,9 @@ def generate_response(question, context, fine_tuned_knowledge = False):
     prompt = prompt_using_fine_tune_knowledge if fine_tuned_knowledge else prompt_with_context
     model = get_generative_model("text/plain" if fine_tuned_knowledge else "application/json")
     
+    if model is None:
+        return "Failed to load generative model."
+
     return model.generate_content(prompt).text
 
 def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
@@ -264,7 +270,6 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
         while not response_json_valid and max_attempts > 0:
             response = ""
 
-            #Test 1
             try:
                 response = generate_response(user_question, context , fine_tuned_knowledge)
             except Exception as e:
@@ -272,22 +277,20 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
                 max_attempts -= 1
                 continue
 
-            #Test 2
             parsed_result, response_json_valid = extract_and_parse_json(response)
             if response_json_valid == False:
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
 
-            #Test 3
             is_expected_json = is_expected_json_content(parsed_result)  
             if is_expected_json == False:
                 st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
             
-            break #If all tests passed above
-    else: #if using fine_tuned knowledge
+            break
+    else:
         try:
             parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
         except Exception as e:
@@ -297,7 +300,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
 
 def user_input(user_question, api_key):
     with st.spinner("Processing..."):
-        st.session_state.show_fine_tuned_expander = True  # Reset
+        st.session_state.show_fine_tuned_expander = True
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
         new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
         docs = new_db.similarity_search(user_question)
@@ -319,11 +322,6 @@ def app():
     # Load the credentials into the session state
     if "connext_chatbot_admin_credentials" not in st.session_state:
         st.session_state["connext_chatbot_admin_credentials"] = st.secrets["service_account"]
-
-    # Initialize Firebase Admin SDK
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(st.secrets["service_account"])
-        firebase_admin.initialize_app(cred)
 
     # Get Firestore client
     firestore_db = firestore.client()
