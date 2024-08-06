@@ -382,6 +382,7 @@ def app():
 
     if submit_button:
         if user_question and google_ai_api_key:
+            # Build context from chat history
             context = "\n\n".join([f"User: {chat['question']}\nBot: {chat['answer']['Answer']}" for chat in st.session_state.chat_history])
             parsed_result = user_input(user_question, google_ai_api_key)
             st.session_state.parsed_result = parsed_result
