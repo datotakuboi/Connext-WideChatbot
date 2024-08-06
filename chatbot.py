@@ -296,8 +296,18 @@ def app():
     def display_chat_history():
         with chat_history_placeholder.container():
             for chat in st.session_state.chat_history:
-                st.markdown(f"🧑 **You:** {chat['question']}")
-                st.markdown(f"🤖 **Bot:** {chat['answer']['Answer']}")
+                st.markdown(f"""
+                    <div style='text-align: left; margin-bottom: 10px;'>
+                        <div style='display: inline-block; background-color: #DCF8C6; padding: 10px; border-radius: 10px; max-width: 70%;'>
+                            <strong>🧑 You:</strong> {chat['question']}
+                        </div>
+                    </div>
+                    <div style='text-align: right; margin-bottom: 10px;'>
+                        <div style='display: inline-block; background-color: #E4E6EB; padding: 10px; border-radius: 10px; max-width: 70%;'>
+                            <strong>🤖 Bot:</strong> {chat['answer']['Answer']}
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
 
     display_chat_history()
 
