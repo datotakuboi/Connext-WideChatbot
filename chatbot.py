@@ -200,7 +200,9 @@ def generate_response(question, context, fine_tuned_knowledge = False):
     if model is None:
         return "Failed to load generative model."
 
-    return model.generate_content(prompt).text
+    response = model.generate_content(prompt).text
+    st.write(f"Debug: Response: {response}")  # Debugging line
+    return response
 
 def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
     parsed_result = {}
@@ -219,12 +221,14 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
                 continue
 
             parsed_result, response_json_valid = extract_and_parse_json(response)
+            st.write(f"Debug: Parsed Result: {parsed_result}, Valid: {response_json_valid}")  # Debugging line
             if not response_json_valid:
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
 
             is_expected_json = is_expected_json_content(parsed_result)  
+            st.write(f"Debug: Expected JSON Content: {is_expected_json}")  # Debugging line
             if not is_expected_json:
                 st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
