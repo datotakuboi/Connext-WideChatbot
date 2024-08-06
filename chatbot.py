@@ -168,22 +168,26 @@ def download_file_from_url(url):
         return None, None
 
 def extract_and_parse_json(text):
+    # Find the first opening and the last closing curly brackets
     start_index = text.find('{')
     end_index = text.rfind('}')
     
     if start_index == -1 or end_index == -1 or end_index < start_index:
-        return None, False
+        return None, False  # Proper JSON structure not found
 
+    # Extract the substring that contains the JSON
     json_str = text[start_index:end_index + 1]
 
     try:
+        # Attempt to parse the JSON
         parsed_json = json.loads(json_str)
         return parsed_json, True
     except json.JSONDecodeError:
-        return None, False
-
+        return None, False  # JSON parsing failed
+    
 def is_expected_json_content(json_data):
     try:
+        # Try to load the JSON data
         data = json.loads(json_data) if isinstance(json_data, str) else json_data
     except json.JSONDecodeError:
         return False
@@ -191,9 +195,9 @@ def is_expected_json_content(json_data):
     required_keys = ["Is_Answer_In_Context", "Answer"]
 
     if not all(key in data for key in required_keys):
-        return False
+            return False
     
-    return True
+    return True #All checks passed for the specified type
 
 def get_pdf_text(pdf_docs):
     text = ""
@@ -228,6 +232,7 @@ def get_generative_model(response_mime_type = "text/plain"):
 
 
     model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h' ,generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
+    print(f"Model selected: {model}")
     return model
 
 
@@ -282,31 +287,39 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
         while not response_json_valid and max_attempts > 0:
             response = ""
 
+            #Test 1
             try:
                 response = generate_response(user_question, context , fine_tuned_knowledge)
+                # print("Chatbot Original Reponse: ", response)
             except Exception as e:
-                max_attempts -= 1
+                print(f"Failed to create response for the question:\n{user_question}\n\n Error Code: {str(e)}")
+                max_attempts = max_attempts - 1
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
                 continue
 
+            #Test 2
             parsed_result, response_json_valid = extract_and_parse_json(response)
-            if not response_json_valid:
-                max_attempts -= 1
+            if response_json_valid == False:
+                print(f"Failed to validate and parse json for the questions:\n {user_question}")
+                max_attempts = max_attempts - 1
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
 
-            is_expected_json = is_expected_json_content(parsed_result)
-            if not is_expected_json:
-                max_attempts -= 1
+            #Test 3
+            is_expected_json = is_expected_json_content(parsed_result)  
+            if is_expected_json == False:
+                print(f"Successfully validated and parse json for the question: {user_question} but is not on expected format... Trying again...")
                 st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 continue
-
-            break
-    else:
+            
+            break #If all tests passed above
+    else: #if using fine_tuned knowledge
         try:
-            parsed_result = generate_response(user_question, context, fine_tuned_knowledge)
+            print("Getting fine tuned knowledge...")
+            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
         except Exception as e:
-            parsed_result = ""
+            print(f"Failed to create response for the question:\n\n {user_question}")
+            parsed_result = "" #Defaul empty string given when failed to generate response
             st.toast(f"Failed to create a response for your query.")
 
     return parsed_result
@@ -314,7 +327,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
 def user_input(user_question, api_key):
     
     with st.spinner("Processing..."):
-        st.session_state.show_fine_tuned_expander = True
+        st.session_state.show_fine_tuned_expander = True  # Reset
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
         new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
         docs = new_db.similarity_search(user_question)
@@ -322,6 +335,7 @@ def user_input(user_question, api_key):
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
         parsed_result = try_get_answer(user_question, context)
+        print(f"Parsed Result: {parsed_result}")
     
     return parsed_result
     
@@ -395,6 +409,8 @@ def app():
     if 'parsed_result' not in st.session_state:
         st.session_state.parsed_result = {}
 
+    
+
     with st.sidebar:
         st.title("PDF Documents:")
         for idx, doc in enumerate(docs, start=1):
@@ -439,7 +455,6 @@ def app():
     if submit_button:
         if user_question and google_ai_api_key:
             st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
-            st.session_state.chat_history.append({"user_question": user_question, "response": st.session_state.parsed_result.get('Answer', 'No response')})
             with chat_placeholder.container():
                 for idx, chat in enumerate(st.session_state.chat_history):
                     st.write(f"🧑 **You:** {chat['user_question']}")
@@ -461,8 +476,7 @@ def app():
                                             st.rerun()
 
     if st.session_state["request_fine_tuned_answer"]:
-        with st.spinner("Generating fine-tuned answer..."):
-            fine_tuned_result = try_get_answer(st.session_state.chat_history[-1]['user_question'], context="", fine_tuned_knowledge=True)
+        fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
         if fine_tuned_result:
             st.session_state.chat_history[-1]["response"] = fine_tuned_result.strip()
             st.session_state.show_fine_tuned_expander = False
