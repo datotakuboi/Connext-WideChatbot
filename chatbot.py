@@ -37,7 +37,6 @@ def google_oauth_link(flow):
     st.markdown(f"[Sign in with Google]({auth_url})", unsafe_allow_html=True)
     code = st.text_input("Enter the authorization code:")
     return code
-
 @lru_cache(maxsize=32)
 def fetch_token_data():
     """Fetch the token data from Firestore."""
