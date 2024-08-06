@@ -4,36 +4,41 @@ import firebase_admin
 from firebase_admin import firestore
 from google.cloud import storage
 from firebase_admin import credentials
-from firebase_admin import auth
-from dotenv import load_dotenv
 from urllib.parse import urlparse, unquote
 import os
-import json
-import requests
 import tempfile
-from functools import partial
-import datetime
-import pytz
-import mimetypes
 from pdfminer.high_level import extract_text
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import google.generativeai as genai
-from langchain_community.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains.question_answering import load_qa_chain
-from langchain.prompts import PromptTemplate
+from langchain.vectorstores import FAISS
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+import datetime
+import requests
+import json
 
-### Functions: Start ###
+# Initialize session_state values
+if "oauth_creds" not in st.session_state:
+    st.session_state["oauth_creds"] = None
+
+if "chat_history" not in st.session_state:
+    st.session_state["chat_history"] = []
+
+if "conversation_context" not in st.session_state:
+    st.session_state["conversation_context"] = ""
+
+# Initialize Firebase SDK
+if not firebase_admin._apps:
+    cred = credentials.Certificate(dict(st.secrets["service_account"]))
+    firebase_admin.initialize_app(cred)
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
 
-@st.dialog("Google Consent Authentication Link")
+@st.experimental_dialog("Google Consent Authentication Link")
 def google_oauth_link(flow):
-    auth_url, _ = flow.authorization_url(redirect_uris=st.secrets["web"]["redirect_uris"], prompt='consent')
+    auth_url, _ = flow.authorization_url(prompt='consent')
     st.write("Please go to this URL and authorize access:")
     st.markdown(f"[Sign in with Google]({auth_url})", unsafe_allow_html=True)
     code = st.text_input("Enter the authorization code:")
@@ -129,28 +134,38 @@ def load_creds():
         return None
 
     return creds
-def download_file_to_temp(url):
-    # Create a temporary directory
-    storage_client = storage.Client.from_service_account_info(st.session_state["connext_chatbot_admin_credentials"])
-    bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
-    temp_dir = tempfile.mkdtemp()
 
-    # Download the file
-    response = requests.get(url)
-    parsed_url = urlparse(url)
-    file_name = os.path.basename(unquote(parsed_url.path))
+@st.cache_resource
+def get_vector_store(text_chunks, api_key):
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
+    vector_store.save_local("faiss_index")
 
-    blob = bucket.blob(file_name)
-    
-    # Create the full path with the preferred filename
-    temp_file_path = os.path.join(temp_dir, file_name)
+def generate_signed_url(bucket_name, blob_name, service_account_info, expiration=3600):
+    storage_client = storage.Client.from_service_account_info(service_account_info)
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    url = blob.generate_signed_url(expiration=datetime.timedelta(seconds=expiration))
+    return url
 
-    # # Save the content to the file
-    # with open(temp_file_path, 'wb') as temp_file:
-    #     temp_file.write(response.content)
-    blob.download_to_filename(temp_file_path)
+def download_file_from_url(url):
+    try:
+        temp_dir = tempfile.mkdtemp()
+        file_name = os.path.basename(urlparse(url).path)
+        temp_file_path = os.path.join(temp_dir, file_name)
 
-    return temp_file_path, file_name
+        response = requests.get(url, stream=True)
+        if response.status_code == 200:
+            with open(temp_file_path, 'wb') as file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    file.write(chunk)
+            return temp_file_path, file_name
+        else:
+            st.error(f"Failed to download file: {response.status_code}")
+            return None, None
+    except Exception as e:
+        st.error(f"Failed to download file: {e}")
+        return None, None
 
 def extract_and_parse_json(text):
     # Find the first opening and the last closing curly brackets
@@ -324,22 +339,29 @@ def user_input(user_question, api_key):
     
     return parsed_result
     
+def clear_chat():
+    st.session_state.chat_history = []
+    st.session_state.conversation_context = ""
 
 def app():
+    st.set_page_config(page_title="Connext Chatbot", layout="centered")
 
-    google_ai_api_key = st.session_state["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
-    #Get firestore client
-    firestore_db=firestore.client()
-    st.session_state.db=firestore_db
+    google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
 
-    # Center the logo image
-    col1, col2, col3 = st.columns([3,4,3])
+    if not google_ai_api_key:
+        st.error("Google API key is missing. Please provide it in the secrets configuration.")
+        return
+
+    firestore_db = firestore.client()
+    st.session_state.db = firestore_db
+
+    col1, col2, col3 = st.columns([3, 4, 3])
 
     with col1:
         st.write(' ')
 
     with col2:
-        st.image("Connext_Logo.png", width=250) 
+        st.image("Connext_Logo.png", width=250)
 
     with col3:
         st.write(' ')
@@ -348,30 +370,23 @@ def app():
 
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
-
+    
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
 
     if 'parsed_result' not in st.session_state:
         st.session_state.parsed_result = {}
 
-    chat_history_placeholder = st.empty()
-
-    def display_chat_history():
-        with chat_history_placeholder.container():
-            for chat in st.session_state.chat_history:
-                st.markdown(f"🧑 **You:** {chat['question']}")
-                st.markdown(f"🤖 **Bot:** {chat['answer']['Answer']}")
-
-    display_chat_history()
+    chat_placeholder = st.empty()
+    with chat_placeholder.container():
+        for chat in st.session_state.chat_history:
+            st.write(f"🧑 **You:** {chat['user_question']}")
+            st.write(f"🤖 **Bot:** {chat['response']}")
 
     user_question = st.text_input("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
-    clear_history_button = st.button("Clear Chat History")
-
-    if clear_history_button:
-        st.session_state.chat_history = []
-        display_chat_history()
+    clear_button = st.button("Clear Chat History", on_click=clear_chat)
+    
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
@@ -389,75 +404,86 @@ def app():
         st.session_state.fine_tuned_answer_expander_state = False
 
     if 'show_fine_tuned_expander' not in st.session_state:
-        st.session_state.show_fine_tuned_expander = False
+        st.session_state.show_fine_tuned_expander = True
 
-    if submit_button:
-        if user_question and google_ai_api_key:
-            parsed_result = user_input(user_question, google_ai_api_key)
-            st.session_state.parsed_result = parsed_result
-            if "Answer" in parsed_result:
-                st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
-                display_chat_history()
-                if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
-                    st.session_state.show_fine_tuned_expander = True
-            else:
-                st.toast("Failed to get a valid response from the model.")
+    if 'parsed_result' not in st.session_state:
+        st.session_state.parsed_result = {}
 
-    display_chat_history()
-
-    if st.session_state.show_fine_tuned_expander:
-        with st.expander("Get fine-tuned answer?", expanded=True):
-            st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
-            col1, col2, _ = st.columns([1, 1, 1])
-            with col1:
-                if st.button("Yes", key=f"yes_button"):
-                    st.session_state.request_fine_tuned_answer = True
-                    st.session_state.show_fine_tuned_expander = False
-                    st.rerun()
-            with col2:
-                if st.button("No", key=f"no_button"):
-                    st.session_state.show_fine_tuned_expander = False
-                    st.rerun()
-
-    if st.session_state["request_fine_tuned_answer"]:
-        if st.session_state.chat_history:
-            with st.spinner("Generating fine-tuned answer..."):
-                fine_tuned_result = try_get_answer(st.session_state.chat_history[-1]['question'], context="", fine_tuned_knowledge=True)
-            if fine_tuned_result:
-                st.session_state.chat_history[-1]['answer'] = {"Answer": fine_tuned_result.strip()}
-                display_chat_history()
-            else:
-                st.toast("Failed to generate a fine-tuned answer.")
-        st.session_state["request_fine_tuned_answer"] = False
+    
 
     with st.sidebar:
         st.title("PDF Documents:")
         for idx, doc in enumerate(docs, start=1):
             retriever = doc.to_dict()
-            retriever['id'] = doc.id  # Add document ID to the retriever dictionary
+            retriever['id'] = doc.id
             retriever_name = retriever['retriever_name']
             retriever_description = retriever['retriever_description']
             with st.expander(retriever_name):
                 st.markdown(f"**Description:** {retriever_description}")
-                file_path, file_name = download_file_to_temp(retriever['document']) # Get the document file path and file name
+
+                parsed_url = urlparse(retriever['document'])
+                file_name = os.path.basename(unquote(parsed_url.path))
+                signed_url = generate_signed_url('connext-chatbot-admin.appspot.com', file_name, st.secrets["service_account"])
+
                 st.markdown(f"_**File Name**_: {file_name}")
-                retriever["file_path"] = file_path 
-                st.session_state["retrievers"][retriever_name] = retriever #populate the retriever dictionary
+                st.markdown(f"[Download PDF]({signed_url})", unsafe_allow_html=True)
+
+                retriever["signed_url"] = signed_url
+                st.session_state["retrievers"][retriever_name] = retriever
+
         st.title("PDF Document Selection:")
-        st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))  
-        
-        #Get pdf docs of selected retrievers from st.session_state["selected_retrievers"]
+        st.session_state["selected_retrievers"] = st.multiselect("Select Retrievers", list(st.session_state["retrievers"].keys()))
+
         if st.button("Submit & Process", key="process_button"):
             if google_ai_api_key:
                 with st.spinner("Processing..."):
-                    # Get pdf docs of selected retrievers from st.session_state["selected_retrievers"]
-                    selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
-                    raw_text = get_pdf_text(selected_files)
+                    selected_retrievers = st.session_state["selected_retrievers"]
+                    downloaded_files = []
+                    for name in selected_retrievers:
+                        signed_url = st.session_state["retrievers"][name]["signed_url"]
+                        file_path, _ = download_file_from_url(signed_url)
+                        if file_path:
+                            downloaded_files.append(file_path)
+                    
+                    raw_text = get_pdf_text(downloaded_files)
                     text_chunks = get_text_chunks(raw_text)
                     get_vector_store(text_chunks, google_ai_api_key)
-                    st.success("Done")
+                    st.success("Processing complete.")
             else:
-                st.toast("Failed to process the documents", icon="💥")
+                st.error("Google API key is missing. Please provide it in the secrets configuration.")
+
+    if submit_button:
+        if user_question and google_ai_api_key:
+            st.session_state.parsed_result = user_input(user_question, google_ai_api_key)
+            with chat_placeholder.container():
+                for idx, chat in enumerate(st.session_state.chat_history):
+                    st.write(f"🧑 **You:** {chat['user_question']}")
+                    st.write(f"🤖 **Bot:** {chat['response']}")
+                    if idx == len(st.session_state.chat_history) - 1:
+                        if "Is_Answer_In_Context" in st.session_state.parsed_result and not st.session_state.parsed_result["Is_Answer_In_Context"]:
+                            if st.session_state.show_fine_tuned_expander:
+                                with st.expander("Get fine-tuned answer?", expanded=True):
+                                    st.write("Would you like me to generate the answer based on my fine-tuned knowledge?")
+                                    col1, col2, _ = st.columns([1, 1, 1])
+                                    with col1:
+                                        if st.button("Yes", key=f"yes_button_{idx}"):
+                                            st.session_state["request_fine_tuned_answer"] = True
+                                            st.session_state.show_fine_tuned_expander = False
+                                            st.rerun()
+                                    with col2:
+                                        if st.button("No", key=f"no_button_{idx}"):
+                                            st.session_state.show_fine_tuned_expander = False
+                                            st.rerun()
+
+    if st.session_state["request_fine_tuned_answer"]:
+        fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
+        if fine_tuned_result:
+            st.session_state.chat_history[-1]["response"] = fine_tuned_result.strip()
+            st.session_state.show_fine_tuned_expander = False
+            st.session_state.parsed_result['Answer'] = fine_tuned_result.strip()
+        else:
+            st.error("Failed to generate a fine-tuned answer.")
+        st.session_state["request_fine_tuned_answer"] = False
 
 if __name__ == "__main__":
     app()
