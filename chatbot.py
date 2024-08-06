@@ -20,6 +20,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 import asyncio
+from datetime import timedelta
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
 
@@ -72,21 +73,17 @@ def load_creds():
     return creds
 
 @lru_cache(maxsize=32)
-async def download_file_to_temp_async(url):
+async def generate_signed_url(url):
     storage_client = storage.Client.from_service_account_info(st.session_state["connext_chatbot_admin_credentials"])
     bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
-    temp_dir = tempfile.mkdtemp()
 
     parsed_url = urlparse(url)
     file_name = os.path.basename(unquote(parsed_url.path))
 
     blob = bucket.blob(file_name)
-    temp_file_path = os.path.join(temp_dir, file_name)
+    signed_url = blob.generate_signed_url(expiration=timedelta(hours=1))  # URL valid for 1 hour
 
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, blob.download_to_filename, temp_file_path)
-
-    return temp_file_path, file_name
+    return signed_url
 
 def extract_and_parse_json(text):
     start_index = text.find('{')
@@ -245,8 +242,8 @@ def user_input(user_question, api_key):
     
     return parsed_result
 
-async def download_files(urls):
-    tasks = [download_file_to_temp_async(url) for url in urls]
+async def generate_signed_urls(urls):
+    tasks = [generate_signed_url(url) for url in urls]
     return await asyncio.gather(*tasks)
 
 def app():
@@ -366,18 +363,12 @@ def app():
             retriever['id'] = doc.id
             retriever_name = retriever['retriever_name']
             retriever_description = retriever['retriever_description']
-            file_path, file_name = asyncio.run(download_file_to_temp_async(retriever['document']))
-            file_download_links[retriever_name] = file_path
+            signed_url = asyncio.run(generate_signed_url(retriever['document']))
+            file_download_links[retriever_name] = signed_url
             with st.expander(retriever_name):
                 st.markdown(f"**Description:** {retriever_description}")
-                with open(file_path, "rb") as file:
-                    btn = st.download_button(
-                        label=f"Download {file_name}",
-                        data=file,
-                        file_name=file_name,
-                        mime="application/pdf"
-                    )
-                retriever["file_path"] = file_path  # Store the downloaded file path
+                st.markdown(f"[Download {retriever_name}]({signed_url})", unsafe_allow_html=True)
+                retriever["file_url"] = signed_url  # Store the signed URL
                 st.session_state["retrievers"][retriever_name] = retriever
 
         st.title("PDF Document Selection:")
@@ -386,6 +377,12 @@ def app():
         if st.button("Submit & Process", key="process_button"):
             if google_ai_api_key:
                 with st.spinner("Processing..."):
+                    selected_files_urls = [st.session_state["retrievers"][name]["file_url"] for name in st.session_state["selected_retrievers"]]
+                    downloaded_files = asyncio.run(download_files(selected_files_urls))
+
+                    for name, file_path in zip(st.session_state["selected_retrievers"], downloaded_files):
+                        st.session_state["retrievers"][name]["file_path"] = file_path
+
                     selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
                     raw_text = get_pdf_text(selected_files)
                     text_chunks = get_text_chunks(raw_text)
