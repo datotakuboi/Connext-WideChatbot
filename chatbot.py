@@ -280,7 +280,7 @@ def app():
     with col3:
         st.write(' ')
 
-    st.markdown('## Welcome to :blue[Connext Chatbot] :robot_face:')
+    st.markdown('## Welcome to :blue[Connext Chatbot]')
 
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
@@ -325,7 +325,7 @@ def app():
                 }
                 .bot-message-container {
                     display: flex;
-                    justify-content: flex-start.
+                    justify-content: flex-start;
                 }
                 </style>
             """, unsafe_allow_html=True)
@@ -351,9 +351,6 @@ def app():
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
-
-    if "selected_retrievers" not in st.session_state:
-        st.session_state["selected_retrievers"] = []
 
     if "answer" not in st.session_state:
         st.session_state["answer"] = ""
