@@ -44,29 +44,94 @@ def google_oauth_link(flow):
     code = st.text_input("Enter the authorization code:")
     return code
 
-@st.cache_resource
+def fetch_token_data():
+    """Fetch the token data from Firestore."""
+    try:
+        token_ref = st.session_state.db.collection('Token').limit(1)
+        token_docs = token_ref.get()
+        
+        if not token_docs:
+            st.error("No token document found in Firestore.")
+            return None, None
+        
+        token_doc = None
+        doc_id = None
+        for doc in token_docs:
+            token_doc = doc.to_dict()
+            doc_id = doc.id
+            break
+
+        if not token_doc:
+            st.error("No token document found in Firestore.")
+            return None, None
+
+        return token_doc, doc_id
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {str(e)}")
+        return None, None
+
 def load_creds():
-    token_info = {
-        'token': st.secrets["token"]["value"],
-        'refresh_token': st.secrets["token"]["refresh_token"],
-        'token_uri': st.secrets["token"]["token_uri"],
-        'client_id': st.secrets["token"]["client_id"],
-        'client_secret': st.secrets["token"]["client_secret"],
-        'scopes': st.secrets["token"]["scopes"],
-        'expiry': st.secrets["token"]["expiry"]
-    }
+    token_doc, doc_id = fetch_token_data()
 
-    temp_dir = tempfile.mkdtemp()
-    token_file_path = os.path.join(temp_dir, 'token.json')
-    with open(token_file_path, 'w') as token_file:
-        json.dump(token_info, token_file)
+    if token_doc:
+        account = token_doc.get("account")
+        client_id = token_doc.get("client_id")
+        client_secret = token_doc.get("client_secret")
+        expiry = token_doc.get("expiry")
+        refresh_token = token_doc.get("refresh_token")
+        scopes = token_doc.get("scopes")
+        token = token_doc.get("token")
+        token_uri = token_doc.get("token_uri")
+        universe_domain = token_doc.get("universe_domain")
 
-    creds = Credentials.from_authorized_user_file(token_file_path, SCOPES)
+        st.session_state['account'] = account
+        st.session_state['client_id'] = client_id
+        st.session_state['client_secret'] = client_secret
+        st.session_state['expiry'] = expiry
+        st.session_state['refresh_token'] = refresh_token
+        st.session_state['scopes'] = scopes
+        st.session_state['token'] = token
+        st.session_state['token_uri'] = token_uri
+        st.session_state['universe_domain'] = universe_domain
 
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
+        temp_dir = tempfile.mkdtemp()
+        token_file_path = os.path.join(temp_dir, 'token.json')
         with open(token_file_path, 'w') as token_file:
-            token_file.write(creds.to_json())
+            json.dump(token_doc, token_file)
+
+        creds = Credentials.from_authorized_user_file(token_file_path, scopes)
+
+        if creds.expired:
+            token_doc, _ = fetch_token_data()
+            if token_doc:
+                new_refresh_token = token_doc.get("refresh_token")
+                if creds.refresh_token and creds.refresh_token == new_refresh_token:
+                    st.toast("Refreshing token...")
+                    creds.refresh(Request())
+                    new_token_data = {
+                        "account": account,
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "expiry": creds.expiry.isoformat() if creds.expiry else expiry,
+                        "refresh_token": creds.refresh_token,
+                        "scopes": scopes,
+                        "token": creds.token,
+                        "token_uri": token_uri,
+                        "universe_domain": universe_domain
+                    }
+                    
+                    st.session_state.db.collection('Token').document(doc_id).set(new_token_data)
+                    st.session_state.update(new_token_data)
+                    with open(token_file_path, 'w') as token_file:
+                        json.dump(new_token_data, token_file)
+                else:
+                    st.error("Refresh token mismatch or missing. Please log in again.")
+                    return None
+            else:
+                st.error("Failed to re-fetch token data from Firestore.")
+                return None
+    else:
+        return None
 
     return creds
 
