@@ -129,6 +129,7 @@ def load_creds():
         return None
 
     return creds
+
 def download_file_to_temp(url):
     # Create a temporary directory
     storage_client = storage.Client.from_service_account_info(st.session_state["connext_chatbot_admin_credentials"])
@@ -145,9 +146,6 @@ def download_file_to_temp(url):
     # Create the full path with the preferred filename
     temp_file_path = os.path.join(temp_dir, file_name)
 
-    # # Save the content to the file
-    # with open(temp_file_path, 'wb') as temp_file:
-    #     temp_file.write(response.content)
     blob.download_to_filename(temp_file_path)
 
     return temp_file_path, file_name
@@ -157,7 +155,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if start_index == -1 or end_index == -1 or end_index < start_index:
+    if (start_index == -1 or end_index == -1 or end_index < start_index):
         return None, False  # Proper JSON structure not found
 
     # Extract the substring that contains the JSON
@@ -180,7 +178,7 @@ def is_expected_json_content(json_data):
     required_keys = ["Is_Answer_In_Context", "Answer"]
 
     if not all(key in data for key in required_keys):
-            return False
+        return False
     
     return True #All checks passed for the specified type
 
@@ -203,10 +201,10 @@ def get_vector_store(text_chunks, api_key):
 
 def get_generative_model(response_mime_type = "text/plain"):
     generation_config = {
-    "temperature": 0.4,
-    "top_p": 1,
-    "max_output_tokens": 8192,
-    "response_mime_type": response_mime_type
+        "temperature": 0.4,
+        "top_p": 1,
+        "max_output_tokens": 8192,
+        "response_mime_type": response_mime_type
     }
 
     if st.session_state["oauth_creds"] is not None:
@@ -215,14 +213,10 @@ def get_generative_model(response_mime_type = "text/plain"):
         st.session_state["oauth_creds"] = load_creds()
         genai.configure(credentials=st.session_state["oauth_creds"])
 
-
     model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h' ,generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
-    print(f"Model selected: {model}")
     return model
 
-
 def generate_response(question, context, fine_tuned_knowledge = False):
-
     prompt_using_fine_tune_knowledge = f"""
     Based on your base or fine-tuned knowledge, can you answer the the following question?
 
@@ -237,7 +231,6 @@ def generate_response(question, context, fine_tuned_knowledge = False):
 
     """
     prompt_with_context = f"""
-
     Answer the question below as detailed as possible from the provided context below, make sure to provide all the details but if the answer is not in
     provided context. Try not to make up an answer just for the sake of answering a question.
 
@@ -263,7 +256,6 @@ def generate_response(question, context, fine_tuned_knowledge = False):
     return model.generate_content(prompt).text
 
 def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
-
     parsed_result = {}
     if not fine_tuned_knowledge:
         response_json_valid = False
@@ -275,42 +267,35 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
             #Test 1
             try:
                 response = generate_response(user_question, context , fine_tuned_knowledge)
-                # print("Chatbot Original Reponse: ", response)
             except Exception as e:
-                print(f"Failed to create response for the question:\n{user_question}\n\n Error Code: {str(e)}")
-                max_attempts = max_attempts - 1
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
+                max_attempts -= 1
                 continue
 
             #Test 2
             parsed_result, response_json_valid = extract_and_parse_json(response)
             if response_json_valid == False:
-                print(f"Failed to validate and parse json for the questions:\n {user_question}")
-                max_attempts = max_attempts - 1
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
+                max_attempts -= 1
                 continue
 
             #Test 3
             is_expected_json = is_expected_json_content(parsed_result)  
             if is_expected_json == False:
-                print(f"Successfully validated and parse json for the question: {user_question} but is not on expected format... Trying again...")
                 st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
+                max_attempts -= 1
                 continue
             
             break #If all tests passed above
     else: #if using fine_tuned knowledge
         try:
-            print("Getting fine tuned knowledge...")
             parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
         except Exception as e:
-            print(f"Failed to create response for the question:\n\n {user_question}")
-            parsed_result = "" #Defaul empty string given when failed to generate response
             st.toast(f"Failed to create a response for your query.")
 
     return parsed_result
 
 def user_input(user_question, api_key):
-    
     with st.spinner("Processing..."):
         st.session_state.show_fine_tuned_expander = True  # Reset
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
@@ -320,20 +305,23 @@ def user_input(user_question, api_key):
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
         parsed_result = try_get_answer(user_question, context)
-        print(f"Parsed Result: {parsed_result}")
     
     return parsed_result
-    
 
 def app():
+    google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
 
-    google_ai_api_key = st.session_state["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
-    #Get firestore client
-    firestore_db=firestore.client()
-    st.session_state.db=firestore_db
+    # Initialize Firebase Admin SDK
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(st.secrets["service_account"])
+        firebase_admin.initialize_app(cred)
+
+    # Get Firestore client
+    firestore_db = firestore.client()
+    st.session_state.db = firestore_db
 
     # Center the logo image
-    col1, col2, col3 = st.columns([3,4,3])
+    col1, col2, col3 = st.columns([3, 4, 3])
 
     with col1:
         st.write(' ')
@@ -446,11 +434,9 @@ def app():
         st.title("PDF Document Selection:")
         st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))  
         
-        #Get pdf docs of selected retrievers from st.session_state["selected_retrievers"]
         if st.button("Submit & Process", key="process_button"):
             if google_ai_api_key:
                 with st.spinner("Processing..."):
-                    # Get pdf docs of selected retrievers from st.session_state["selected_retrievers"]
                     selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
                     raw_text = get_pdf_text(selected_files)
                     text_chunks = get_text_chunks(raw_text)
