@@ -280,7 +280,7 @@ def app():
     with col3:
         st.write(' ')
 
-    st.markdown('## Welcome to :blue[Connext Chatbot] :robot_face:')
+    st.markdown('## Welcome to :blue[Connext Chatbot]')
 
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
