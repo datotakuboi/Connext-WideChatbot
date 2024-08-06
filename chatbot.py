@@ -81,6 +81,7 @@ def load_creds():
 
 @lru_cache(maxsize=32)
 def download_file_to_temp(url):
+    # Create a temporary directory
     storage_client = storage.Client.from_service_account_info(st.session_state["connext_chatbot_admin_credentials"])
     bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
     temp_dir = tempfile.mkdtemp()
@@ -248,19 +249,6 @@ def user_input(user_question, api_key):
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
         parsed_result = try_get_answer(user_question, context)
-        
-        if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
-            st.toast("Answer not found in the selected document. Attempting to scan other documents...")
-            remaining_docs = [d for d in st.session_state["retrievers"].values() if d["file_path"] not in context]
-            if remaining_docs:
-                remaining_context = "\n\n--------------------------\n\n".join([extract_text(d["file_path"]) for d in remaining_docs])
-                parsed_result = try_get_answer(user_question, remaining_context)
-                if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
-                    st.toast("Attempting to generate an answer based on fine-tuned knowledge...")
-                    parsed_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
-            else:
-                st.toast("No other documents to scan. Attempting to generate an answer based on fine-tuned knowledge...")
-                parsed_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
     
     return parsed_result
 
@@ -344,10 +332,10 @@ def app():
             for chat in st.session_state.chat_history:
                 st.markdown(f"""
                 <div class="user-message-container">
-                    <div class="user-message">{chat['question']}</div>
+                    <div class="user-message">🧑 **You:** {chat['question']}</div>
                 </div>
                 <div class="bot-message-container">
-                    <div class="bot-message">{chat['answer']['Answer']}</div>
+                    <div class="bot-message">🤖 **Bot:** {chat['answer']['Answer']}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -364,6 +352,9 @@ def app():
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
 
+    if "selected_retrievers" not in st.session_state:
+        st.session_state["selected_retrievers"] = []
+
     if "answer" not in st.session_state:
         st.session_state["answer"] = ""
 
@@ -375,22 +366,6 @@ def app():
 
     if 'show_fine_tuned_expander' not in st.session_state:
         st.session_state.show_fine_tuned_expander = False
-
-    # Download and process all documents initially
-    if "docs_processed" not in st.session_state:
-        all_files = []
-        for doc in docs:
-            retriever = doc.to_dict()
-            retriever['id'] = doc.id
-            file_path, file_name = download_file_to_temp(retriever['document'])
-            retriever["file_path"] = file_path 
-            all_files.append(file_path)
-            st.session_state["retrievers"][retriever['retriever_name']] = retriever
-        
-        raw_text = get_pdf_text(all_files)
-        text_chunks = get_text_chunks(raw_text)
-        get_vector_store(text_chunks, google_ai_api_key)
-        st.session_state["docs_processed"] = True
 
     if submit_button:
         if user_question and google_ai_api_key:
@@ -430,6 +405,33 @@ def app():
             else:
                 st.toast("Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False
+
+    with st.sidebar:
+        st.title("PDF Documents:")
+        for idx, doc in enumerate(docs, start=1):
+            retriever = doc.to_dict()
+            retriever['id'] = doc.id
+            retriever_name = retriever['retriever_name']
+            retriever_description = retriever['retriever_description']
+            with st.expander(retriever_name):
+                st.markdown(f"**Description:** {retriever_description}")
+                file_path, file_name = download_file_to_temp(retriever['document'])
+                st.markdown(f"_**File Name**_: {file_name}")
+                retriever["file_path"] = file_path 
+                st.session_state["retrievers"][retriever_name] = retriever
+        st.title("PDF Document Selection:")
+        st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))  
+        
+        if st.button("Submit & Process", key="process_button"):
+            if google_ai_api_key:
+                with st.spinner("Processing..."):
+                    selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
+                    raw_text = get_pdf_text(selected_files)
+                    text_chunks = get_text_chunks(raw_text)
+                    get_vector_store(text_chunks, google_ai_api_key)
+                    st.success("Done")
+            else:
+                st.toast("Failed to process the documents", icon="💥")
 
 if __name__ == "__main__":
     app()
