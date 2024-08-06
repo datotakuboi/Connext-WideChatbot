@@ -295,18 +295,48 @@ def app():
 
     def display_chat_history():
         with chat_history_placeholder.container():
+            st.markdown("""
+                <style>
+                .user-message {
+                    background-color: #DCF8C6;
+                    color: #000000;
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin-bottom: 5px;
+                    width: fit-content;
+                    max-width: 70%;
+                    word-wrap: break-word;
+                    font-size: 16px;
+                }
+                .bot-message {
+                    background-color: #F1F0F0;
+                    color: #000000;
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin-bottom: 5px;
+                    width: fit-content;
+                    max-width: 70%;
+                    word-wrap: break-word;
+                    font-size: 16px;
+                }
+                .user-message-container {
+                    display: flex;
+                    justify-content: flex-end;
+                }
+                .bot-message-container {
+                    display: flex;
+                    justify-content: flex-start;
+                }
+                </style>
+            """, unsafe_allow_html=True)
             for chat in st.session_state.chat_history:
                 st.markdown(f"""
-                    <div style='text-align: left; margin-bottom: 10px;'>
-                        <div style='display: inline-block; background-color: #DCF8C6; padding: 10px; border-radius: 10px; max-width: 70%;'>
-                            <strong>🧑 You:</strong> {chat['question']}
-                        </div>
-                    </div>
-                    <div style='text-align: right; margin-bottom: 10px;'>
-                        <div style='display: inline-block; background-color: #E4E6EB; padding: 10px; border-radius: 10px; max-width: 70%;'>
-                            <strong>🤖 Bot:</strong> {chat['answer']['Answer']}
-                        </div>
-                    </div>
+                <div class="user-message-container">
+                    <div class="user-message">🧑 **You:** {chat['question']}</div>
+                </div>
+                <div class="bot-message-container">
+                    <div class="bot-message">🤖 **Bot:** {chat['answer']['Answer']}</div>
+                </div>
                 """, unsafe_allow_html=True)
 
     display_chat_history()
