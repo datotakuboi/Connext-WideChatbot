@@ -31,6 +31,14 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
 
+@st.dialog("Google Consent Authentication Link")
+def google_oauth_link(flow):
+    auth_url, _ = flow.authorization_url(redirect_uris=st.secrets["web"]["redirect_uris"], prompt='consent')
+    st.write("Please go to this URL and authorize access:")
+    st.markdown(f"[Sign in with Google]({auth_url})", unsafe_allow_html=True)
+    code = st.text_input("Enter the authorization code:")
+    return code
+
 def fetch_token_data():
     """Fetch the token data from Firestore."""
     try:
@@ -123,36 +131,46 @@ def load_creds():
     return creds
 
 def download_file_to_temp(url):
+    # Create a temporary directory
     storage_client = storage.Client.from_service_account_info(st.session_state["connext_chatbot_admin_credentials"])
     bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
     temp_dir = tempfile.mkdtemp()
 
+    # Download the file
+    response = requests.get(url)
     parsed_url = urlparse(url)
     file_name = os.path.basename(unquote(parsed_url.path))
 
     blob = bucket.blob(file_name)
+    
+    # Create the full path with the preferred filename
     temp_file_path = os.path.join(temp_dir, file_name)
+
     blob.download_to_filename(temp_file_path)
 
     return temp_file_path, file_name
 
 def extract_and_parse_json(text):
+    # Find the first opening and the last closing curly brackets
     start_index = text.find('{')
     end_index = text.rfind('}')
     
     if start_index == -1 or end_index == -1 or end_index < start_index:
-        return None, False
+        return None, False  # Proper JSON structure not found
 
+    # Extract the substring that contains the JSON
     json_str = text[start_index:end_index + 1]
 
     try:
+        # Attempt to parse the JSON
         parsed_json = json.loads(json_str)
         return parsed_json, True
     except json.JSONDecodeError:
-        return None, False
-
+        return None, False  # JSON parsing failed
+    
 def is_expected_json_content(json_data):
     try:
+        # Try to load the JSON data
         data = json.loads(json_data) if isinstance(json_data, str) else json_data
     except json.JSONDecodeError:
         return False
@@ -162,7 +180,7 @@ def is_expected_json_content(json_data):
     if not all(key in data for key in required_keys):
         return False
     
-    return True
+    return True #All checks passed for the specified type
 
 def get_pdf_text(pdf_docs):
     text = ""
@@ -260,13 +278,13 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
                 continue
 
             parsed_result, response_json_valid = extract_and_parse_json(response)
-            if not response_json_valid:
+            if response_json_valid == False:
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
 
             is_expected_json = is_expected_json_content(parsed_result)  
-            if not is_expected_json:
+            if is_expected_json == False:
                 st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
@@ -343,8 +361,12 @@ def app():
     display_chat_history()
 
     user_question = st.text_input("Ask a Question", key="user_question")
-    submit_button = st.button("Submit", key="submit_button", on_click=user_input, args=(user_question, google_ai_api_key))
-    clear_history_button = st.button("Clear Chat History", on_click=lambda: st.session_state.update({"chat_history": []}))
+    submit_button = st.button("Submit", key="submit_button")
+    clear_history_button = st.button("Clear Chat History")
+
+    if clear_history_button:
+        st.session_state.chat_history = []
+        display_chat_history()
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
@@ -364,11 +386,19 @@ def app():
     if 'show_fine_tuned_expander' not in st.session_state:
         st.session_state.show_fine_tuned_expander = False
 
-    if st.session_state.get("parsed_result"):
-        st.session_state.chat_history.append({"question": user_question, "answer": st.session_state["parsed_result"]})
-        display_chat_history()
-        if "Is_Answer_In_Context" in st.session_state["parsed_result"] and not st.session_state["parsed_result"]["Is_Answer_In_Context"]:
-            st.session_state.show_fine_tuned_expander = True
+    if submit_button:
+        if user_question and google_ai_api_key:
+            parsed_result = user_input(user_question, google_ai_api_key)
+            st.session_state.parsed_result = parsed_result
+            if "Answer" in parsed_result:
+                st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
+                display_chat_history()
+                if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
+                    st.session_state.show_fine_tuned_expander = True
+            else:
+                st.toast("Failed to get a valid response from the model.")
+
+    display_chat_history()
 
     if st.session_state.show_fine_tuned_expander:
         with st.expander("Get fine-tuned answer?", expanded=True):
@@ -378,10 +408,11 @@ def app():
                 if st.button("Yes", key=f"yes_button"):
                     st.session_state.request_fine_tuned_answer = True
                     st.session_state.show_fine_tuned_expander = False
-                    st.experimental_rerun()
+                    st.rerun()
             with col2:
                 if st.button("No", key=f"no_button"):
                     st.session_state.show_fine_tuned_expander = False
+                    st.rerun()
 
     if st.session_state["request_fine_tuned_answer"]:
         if st.session_state.chat_history:
@@ -398,15 +429,15 @@ def app():
         st.title("PDF Documents:")
         for idx, doc in enumerate(docs, start=1):
             retriever = doc.to_dict()
-            retriever['id'] = doc.id
+            retriever['id'] = doc.id  # Add document ID to the retriever dictionary
             retriever_name = retriever['retriever_name']
             retriever_description = retriever['retriever_description']
             with st.expander(retriever_name):
                 st.markdown(f"**Description:** {retriever_description}")
-                file_path, file_name = download_file_to_temp(retriever['document'])
+                file_path, file_name = download_file_to_temp(retriever['document']) # Get the document file path and file name
                 st.markdown(f"_**File Name**_: {file_name}")
                 retriever["file_path"] = file_path 
-                st.session_state["retrievers"][retriever_name] = retriever
+                st.session_state["retrievers"][retriever_name] = retriever #populate the retriever dictionary
         st.title("PDF Document Selection:")
         st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))  
         
