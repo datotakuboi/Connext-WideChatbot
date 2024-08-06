@@ -99,7 +99,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if start_index == -1 or end_index == -1 or end_index < start_index:
+    if (start_index == -1) or (end_index == -1) or (end_index < start_index):
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -406,32 +406,23 @@ def app():
                 st.toast("Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False
 
-    with st.sidebar:
-        st.title("PDF Documents:")
-        for idx, doc in enumerate(docs, start=1):
-            retriever = doc.to_dict()
-            retriever['id'] = doc.id
-            retriever_name = retriever['retriever_name']
-            retriever_description = retriever['retriever_description']
-            with st.expander(retriever_name):
-                st.markdown(f"**Description:** {retriever_description}")
-                file_path, file_name = download_file_to_temp(retriever['document'])
-                st.markdown(f"_**File Name**_: {file_name}")
-                retriever["file_path"] = file_path 
-                st.session_state["retrievers"][retriever_name] = retriever
-        st.title("PDF Document Selection:")
-        st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))  
-        
-        if st.button("Submit & Process", key="process_button"):
-            if google_ai_api_key:
-                with st.spinner("Processing..."):
-                    selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
-                    raw_text = get_pdf_text(selected_files)
-                    text_chunks = get_text_chunks(raw_text)
-                    get_vector_store(text_chunks, google_ai_api_key)
-                    st.success("Done")
-            else:
-                st.toast("Failed to process the documents", icon="💥")
+    # Automatically select and process all documents
+    all_retrievers = []
+    for idx, doc in enumerate(docs, start=1):
+        retriever = doc.to_dict()
+        retriever['id'] = doc.id
+        file_path, file_name = download_file_to_temp(retriever['document'])
+        retriever["file_path"] = file_path 
+        all_retrievers.append(retriever["file_path"])
+
+    if google_ai_api_key:
+        with st.spinner("Processing all documents..."):
+            raw_text = get_pdf_text(all_retrievers)
+            text_chunks = get_text_chunks(raw_text)
+            get_vector_store(text_chunks, google_ai_api_key)
+            st.success("All documents processed successfully.")
+    else:
+        st.toast("Failed to process the documents", icon="💥")
 
 if __name__ == "__main__":
     app()
