@@ -1,13 +1,20 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import firebase_admin
-from firebase_admin import firestore, credentials
+from firebase_admin import firestore
 from google.cloud import storage
+from firebase_admin import credentials
+from firebase_admin import auth
+from dotenv import load_dotenv
 from urllib.parse import urlparse, unquote
 import os
 import json
+import requests
 import tempfile
-from functools import lru_cache
+from functools import partial
+import datetime
+import pytz
+import mimetypes
 from pdfminer.high_level import extract_text
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -19,20 +26,14 @@ from langchain.prompts import PromptTemplate
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-import asyncio
+import concurrent.futures
+
+### Functions: Start ###
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
 
-@st.dialog("Google Consent Authentication Link")
-def google_oauth_link(flow):
-    auth_url, _ = flow.authorization_url(redirect_uris=st.secrets["web"]["redirect_uris"], prompt='consent')
-    st.write("Please go to this URL and authorize access:")
-    st.markdown(f"[Sign in with Google]({auth_url})", unsafe_allow_html=True)
-    code = st.text_input("Enter the authorization code:")
-    return code
-
-@lru_cache(maxsize=32)
 def fetch_token_data():
+    """Fetch the token data from Firestore."""
     try:
         token_ref = st.session_state.db.collection('Token').limit(1)
         token_docs = token_ref.get()
@@ -61,18 +62,68 @@ def load_creds():
     token_doc, doc_id = fetch_token_data()
 
     if token_doc:
-        creds = Credentials.from_authorized_user_info(token_doc, SCOPES)
+        account = token_doc.get("account")
+        client_id = token_doc.get("client_id")
+        client_secret = token_doc.get("client_secret")
+        expiry = token_doc.get("expiry")
+        refresh_token = token_doc.get("refresh_token")
+        scopes = token_doc.get("scopes")
+        token = token_doc.get("token")
+        token_uri = token_doc.get("token_uri")
+        universe_domain = token_doc.get("universe_domain")
 
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            st.session_state.db.collection('Token').document(doc_id).set(creds.to_json())
+        st.session_state['account'] = account
+        st.session_state['client_id'] = client_id
+        st.session_state['client_secret'] = client_secret
+        st.session_state['expiry'] = expiry
+        st.session_state['refresh_token'] = refresh_token
+        st.session_state['scopes'] = scopes
+        st.session_state['token'] = token
+        st.session_state['token_uri'] = token_uri
+        st.session_state['universe_domain'] = universe_domain
+
+        temp_dir = tempfile.mkdtemp()
+        token_file_path = os.path.join(temp_dir, 'token.json')
+        with open(token_file_path, 'w') as token_file:
+            json.dump(token_doc, token_file)
+
+        creds = Credentials.from_authorized_user_file(token_file_path, scopes)
+
+        if creds.expired:
+            token_doc, _ = fetch_token_data()
+            if token_doc:
+                new_refresh_token = token_doc.get("refresh_token")
+                if creds.refresh_token and creds.refresh_token == new_refresh_token:
+                    st.toast("Refreshing token...")
+                    creds.refresh(Request())
+                    new_token_data = {
+                        "account": account,
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "expiry": creds.expiry.isoformat() if creds.expiry else expiry,
+                        "refresh_token": creds.refresh_token,
+                        "scopes": scopes,
+                        "token": creds.token,
+                        "token_uri": token_uri,
+                        "universe_domain": universe_domain
+                    }
+                    
+                    st.session_state.db.collection('Token').document(doc_id).set(new_token_data)
+                    st.session_state.update(new_token_data)
+                    with open(token_file_path, 'w') as token_file:
+                        json.dump(new_token_data, token_file)
+                else:
+                    st.error("Refresh token mismatch or missing. Please log in again.")
+                    return None
+            else:
+                st.error("Failed to re-fetch token data from Firestore.")
+                return None
     else:
         return None
 
     return creds
 
-@lru_cache(maxsize=32)
-async def download_file_to_temp_async(url):
+def download_file_to_temp(url):
     storage_client = storage.Client.from_service_account_info(st.session_state["connext_chatbot_admin_credentials"])
     bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
     temp_dir = tempfile.mkdtemp()
@@ -82,9 +133,7 @@ async def download_file_to_temp_async(url):
 
     blob = bucket.blob(file_name)
     temp_file_path = os.path.join(temp_dir, file_name)
-
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, blob.download_to_filename, temp_file_path)
+    blob.download_to_filename(temp_file_path)
 
     return temp_file_path, file_name
 
@@ -92,7 +141,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if (start_index == -1 or end_index == -1 or end_index < start_index):
+    if start_index == -1 or end_index == -1 or end_index < start_index:
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -133,7 +182,7 @@ def get_vector_store(text_chunks, api_key):
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
 
-def get_generative_model(response_mime_type="text/plain"):
+def get_generative_model(response_mime_type = "text/plain"):
     generation_config = {
         "temperature": 0.4,
         "top_p": 1,
@@ -153,7 +202,7 @@ def get_generative_model(response_mime_type="text/plain"):
     model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h', generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
     return model
 
-def generate_response(question, context, fine_tuned_knowledge=False):
+def generate_response(question, context, fine_tuned_knowledge = False):
     prompt_using_fine_tune_knowledge = f"""
     Based on your base or fine-tuned knowledge, can you answer the the following question?
 
@@ -195,7 +244,7 @@ def generate_response(question, context, fine_tuned_knowledge=False):
 
     return model.generate_content(prompt).text
 
-def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
+def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
     parsed_result = {}
     if not fine_tuned_knowledge:
         response_json_valid = False
@@ -205,7 +254,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
             response = ""
 
             try:
-                response = generate_response(user_question, context, fine_tuned_knowledge)
+                response = generate_response(user_question, context , fine_tuned_knowledge)
             except Exception as e:
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
@@ -226,7 +275,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
             break
     else:
         try:
-            parsed_result = generate_response(user_question, context, fine_tuned_knowledge)
+            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
         except Exception as e:
             st.toast(f"Failed to create a response for your query.")
 
@@ -245,23 +294,29 @@ def user_input(user_question, api_key):
     
     return parsed_result
 
-async def download_files(urls):
-    tasks = [download_file_to_temp_async(url) for url in urls]
-    return await asyncio.gather(*tasks)
+def parallel_process_docs(selected_files):
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        text_futures = [executor.submit(extract_text, pdf) for pdf in selected_files]
+        texts = [future.result() for future in concurrent.futures.as_completed(text_futures)]
+    return texts
 
 def app():
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
 
+    # Initialize Firebase Admin SDK
     if not firebase_admin._apps:
         cred = credentials.Certificate(st.secrets["service_account"])
         firebase_admin.initialize_app(cred)
 
+    # Load the credentials into the session state
     if "connext_chatbot_admin_credentials" not in st.session_state:
         st.session_state["connext_chatbot_admin_credentials"] = st.secrets["service_account"]
 
+    # Get Firestore client
     firestore_db = firestore.client()
     st.session_state.db = firestore_db
 
+    # Center the logo image
     col1, col2, col3 = st.columns([3, 4, 3])
 
     with col1:
@@ -295,12 +350,8 @@ def app():
     display_chat_history()
 
     user_question = st.text_input("Ask a Question", key="user_question")
-    submit_button = st.button("Submit", key="submit_button")
-    clear_history_button = st.button("Clear Chat History")
-
-    if clear_history_button:
-        st.session_state.chat_history = []
-        display_chat_history()
+    submit_button = st.button("Submit", key="submit_button", on_click=user_input, args=(user_question, google_ai_api_key))
+    clear_history_button = st.button("Clear Chat History", on_click=lambda: st.session_state.update({"chat_history": []}))
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
@@ -320,19 +371,11 @@ def app():
     if 'show_fine_tuned_expander' not in st.session_state:
         st.session_state.show_fine_tuned_expander = False
 
-    if submit_button:
-        if user_question and google_ai_api_key:
-            parsed_result = user_input(user_question, google_ai_api_key)
-            st.session_state.parsed_result = parsed_result
-            if "Answer" in parsed_result:
-                st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
-                display_chat_history()
-                if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
-                    st.session_state.show_fine_tuned_expander = True
-            else:
-                st.toast("Failed to get a valid response from the model.")
-
-    display_chat_history()
+    if st.session_state.get("parsed_result"):
+        st.session_state.chat_history.append({"question": user_question, "answer": st.session_state["parsed_result"]})
+        display_chat_history()
+        if "Is_Answer_In_Context" in st.session_state["parsed_result"] and not st.session_state["parsed_result"]["Is_Answer_In_Context"]:
+            st.session_state.show_fine_tuned_expander = True
 
     if st.session_state.show_fine_tuned_expander:
         with st.expander("Get fine-tuned answer?", expanded=True):
@@ -342,6 +385,7 @@ def app():
                 if st.button("Yes", key=f"yes_button"):
                     st.session_state.request_fine_tuned_answer = True
                     st.session_state.show_fine_tuned_expander = False
+                    st.experimental_rerun()
             with col2:
                 if st.button("No", key=f"no_button"):
                     st.session_state.show_fine_tuned_expander = False
@@ -359,35 +403,26 @@ def app():
 
     with st.sidebar:
         st.title("PDF Documents:")
-        retriever_urls = []
-        file_download_links = {}
         for idx, doc in enumerate(docs, start=1):
             retriever = doc.to_dict()
             retriever['id'] = doc.id
             retriever_name = retriever['retriever_name']
             retriever_description = retriever['retriever_description']
-            file_path, file_name = asyncio.run(download_file_to_temp_async(retriever['document']))
-            file_download_links[retriever_name] = file_path
             with st.expander(retriever_name):
                 st.markdown(f"**Description:** {retriever_description}")
-                with open(file_path, "rb") as file:
-                    btn = st.download_button(
-                        label=f"Download {file_name}",
-                        data=file,
-                        file_name=file_name,
-                        mime="application/pdf"
-                    )
-                retriever["file_path"] = file_path  # Store the downloaded file path
+                file_path, file_name = download_file_to_temp(retriever['document'])
+                st.markdown(f"_**File Name**_: {file_name}")
+                retriever["file_path"] = file_path 
                 st.session_state["retrievers"][retriever_name] = retriever
-
         st.title("PDF Document Selection:")
-        st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))
-
+        st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))  
+        
         if st.button("Submit & Process", key="process_button"):
             if google_ai_api_key:
                 with st.spinner("Processing..."):
                     selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
-                    raw_text = get_pdf_text(selected_files)
+                    raw_text_list = parallel_process_docs(selected_files)
+                    raw_text = ''.join(raw_text_list)
                     text_chunks = get_text_chunks(raw_text)
                     get_vector_store(text_chunks, google_ai_api_key)
                     st.success("Done")
