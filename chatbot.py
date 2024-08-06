@@ -99,7 +99,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if start_index == -1 or end_index == -1 or end_index < start_index:
+    if (start_index == -1 or end_index == -1 or end_index < start_index):
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -317,14 +317,14 @@ def app():
                     width: fit-content;
                     max-width: 70%;
                     word-wrap: break-word;
-                    font-size: 16px.
+                    font-size: 16px;
                 }
                 .user-message-container {
                     display: flex;
-                    justify-content: flex-end.
+                    justify-content: flex-end;
                 }
                 .bot-message-container {
-                    display: flex.
+                    display: flex;
                     justify-content: flex-start.
                 }
                 </style>
