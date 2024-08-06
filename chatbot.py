@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import firebase_admin
-from firebase_admin import firestore, credentials, auth
+from firebase_admin import firestore, credentials
 from google.cloud import storage
 from dotenv import load_dotenv
 from urllib.parse import urlparse, unquote
@@ -23,7 +23,8 @@ from langchain.prompts import PromptTemplate
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-import concurrent.futures
+import asyncio
+import aiohttp
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
 
@@ -76,7 +77,7 @@ def load_creds():
     return creds
 
 @lru_cache(maxsize=32)
-def download_file_to_temp(url):
+async def download_file_to_temp_async(url):
     storage_client = storage.Client.from_service_account_info(st.session_state["connext_chatbot_admin_credentials"])
     bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
     temp_dir = tempfile.mkdtemp()
@@ -86,7 +87,9 @@ def download_file_to_temp(url):
 
     blob = bucket.blob(file_name)
     temp_file_path = os.path.join(temp_dir, file_name)
-    blob.download_to_filename(temp_file_path)
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, blob.download_to_filename, temp_file_path)
 
     return temp_file_path, file_name
 
@@ -247,6 +250,10 @@ def user_input(user_question, api_key):
     
     return parsed_result
 
+async def download_files(urls):
+    tasks = [download_file_to_temp_async(url) for url in urls]
+    return await asyncio.gather(*tasks)
+
 def app():
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
 
@@ -357,6 +364,7 @@ def app():
 
     with st.sidebar:
         st.title("PDF Documents:")
+        retriever_urls = []
         for idx, doc in enumerate(docs, start=1):
             retriever = doc.to_dict()
             retriever['id'] = doc.id
@@ -364,16 +372,22 @@ def app():
             retriever_description = retriever['retriever_description']
             with st.expander(retriever_name):
                 st.markdown(f"**Description:** {retriever_description}")
-                file_path, file_name = download_file_to_temp(retriever['document'])
-                st.markdown(f"_**File Name**_: {file_name}")
-                retriever["file_path"] = file_path 
+                retriever_urls.append(retriever['document'])
+                retriever["file_path"] = None  # Placeholder for downloaded file path
                 st.session_state["retrievers"][retriever_name] = retriever
+
         st.title("PDF Document Selection:")
-        st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))  
-        
+        st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))
+
         if st.button("Submit & Process", key="process_button"):
             if google_ai_api_key:
                 with st.spinner("Processing..."):
+                    selected_files_urls = [st.session_state["retrievers"][name]["document"] for name in st.session_state["selected_retrievers"]]
+                    downloaded_files = asyncio.run(download_files(selected_files_urls))
+
+                    for name, (file_path, _) in zip(st.session_state["selected_retrievers"], downloaded_files):
+                        st.session_state["retrievers"][name]["file_path"] = file_path
+
                     selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
                     raw_text = get_pdf_text(selected_files)
                     text_chunks = get_text_chunks(raw_text)
