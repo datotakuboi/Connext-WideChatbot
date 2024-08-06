@@ -349,11 +349,9 @@ def app():
                 if st.button("Yes", key=f"yes_button"):
                     st.session_state.request_fine_tuned_answer = True
                     st.session_state.show_fine_tuned_expander = False
-                    st.rerun()
             with col2:
                 if st.button("No", key=f"no_button"):
                     st.session_state.show_fine_tuned_expander = False
-                    st.rerun()
 
     if st.session_state["request_fine_tuned_answer"]:
         if st.session_state.chat_history:
