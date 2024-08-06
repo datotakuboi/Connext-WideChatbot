@@ -7,10 +7,7 @@ from dotenv import load_dotenv
 from urllib.parse import urlparse, unquote
 import os
 import json
-import requests
 import tempfile
-import datetime
-import pytz
 from functools import lru_cache
 from pdfminer.high_level import extract_text
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -24,7 +21,6 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 import asyncio
-import aiohttp
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
 
@@ -97,7 +93,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if start_index == -1 or end_index == -1 or end_index < start_index:
+    if (start_index == -1 or end_index == -1 or end_index < start_index):
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -365,15 +361,19 @@ def app():
     with st.sidebar:
         st.title("PDF Documents:")
         retriever_urls = []
+        file_download_links = {}
         for idx, doc in enumerate(docs, start=1):
             retriever = doc.to_dict()
             retriever['id'] = doc.id
             retriever_name = retriever['retriever_name']
             retriever_description = retriever['retriever_description']
+            file_path, file_name = asyncio.run(download_file_to_temp_async(retriever['document']))
+            file_download_links[retriever_name] = file_path
             with st.expander(retriever_name):
                 st.markdown(f"**Description:** {retriever_description}")
-                retriever_urls.append(retriever['document'])
-                retriever["file_path"] = None  # Placeholder for downloaded file path
+                download_link = f'<a href="file://{file_path}" download="{file_name}">Download {file_name}</a>'
+                st.markdown(download_link, unsafe_allow_html=True)
+                retriever["file_path"] = file_path  # Store the downloaded file path
                 st.session_state["retrievers"][retriever_name] = retriever
 
         st.title("PDF Document Selection:")
@@ -382,12 +382,6 @@ def app():
         if st.button("Submit & Process", key="process_button"):
             if google_ai_api_key:
                 with st.spinner("Processing..."):
-                    selected_files_urls = [st.session_state["retrievers"][name]["document"] for name in st.session_state["selected_retrievers"]]
-                    downloaded_files = asyncio.run(download_files(selected_files_urls))
-
-                    for name, (file_path, _) in zip(st.session_state["selected_retrievers"], downloaded_files):
-                        st.session_state["retrievers"][name]["file_path"] = file_path
-
                     selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
                     raw_text = get_pdf_text(selected_files)
                     text_chunks = get_text_chunks(raw_text)
