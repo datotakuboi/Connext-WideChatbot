@@ -1,10 +1,8 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import firebase_admin
-from firebase_admin import firestore
+from firebase_admin import firestore, credentials, auth
 from google.cloud import storage
-from firebase_admin import credentials
-from firebase_admin import auth
 from dotenv import load_dotenv
 from urllib.parse import urlparse, unquote
 import os
@@ -25,8 +23,7 @@ from langchain.prompts import PromptTemplate
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-
-### Functions: Start ###
+import concurrent.futures
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
 
@@ -40,7 +37,6 @@ def google_oauth_link(flow):
 
 @lru_cache(maxsize=32)
 def fetch_token_data():
-    """Fetch the token data from Firestore."""
     try:
         token_ref = st.session_state.db.collection('Token').limit(1)
         token_docs = token_ref.get()
@@ -81,7 +77,6 @@ def load_creds():
 
 @lru_cache(maxsize=32)
 def download_file_to_temp(url):
-    # Create a temporary directory
     storage_client = storage.Client.from_service_account_info(st.session_state["connext_chatbot_admin_credentials"])
     bucket = storage_client.bucket('connext-chatbot-admin.appspot.com')
     temp_dir = tempfile.mkdtemp()
@@ -140,7 +135,7 @@ def get_vector_store(text_chunks, api_key):
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
 
-def get_generative_model(response_mime_type = "text/plain"):
+def get_generative_model(response_mime_type="text/plain"):
     generation_config = {
         "temperature": 0.4,
         "top_p": 1,
@@ -160,7 +155,7 @@ def get_generative_model(response_mime_type = "text/plain"):
     model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h', generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
     return model
 
-def generate_response(question, context, fine_tuned_knowledge = False):
+def generate_response(question, context, fine_tuned_knowledge=False):
     prompt_using_fine_tune_knowledge = f"""
     Based on your base or fine-tuned knowledge, can you answer the the following question?
 
@@ -202,7 +197,7 @@ def generate_response(question, context, fine_tuned_knowledge = False):
 
     return model.generate_content(prompt).text
 
-def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
+def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
     parsed_result = {}
     if not fine_tuned_knowledge:
         response_json_valid = False
@@ -212,7 +207,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
             response = ""
 
             try:
-                response = generate_response(user_question, context , fine_tuned_knowledge)
+                response = generate_response(user_question, context, fine_tuned_knowledge)
             except Exception as e:
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
@@ -233,7 +228,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
             break
     else:
         try:
-            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
+            parsed_result = generate_response(user_question, context, fine_tuned_knowledge)
         except Exception as e:
             st.toast(f"Failed to create a response for your query.")
 
@@ -255,20 +250,16 @@ def user_input(user_question, api_key):
 def app():
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
 
-    # Initialize Firebase Admin SDK
     if not firebase_admin._apps:
         cred = credentials.Certificate(st.secrets["service_account"])
         firebase_admin.initialize_app(cred)
 
-    # Load the credentials into the session state
     if "connext_chatbot_admin_credentials" not in st.session_state:
         st.session_state["connext_chatbot_admin_credentials"] = st.secrets["service_account"]
 
-    # Get Firestore client
     firestore_db = firestore.client()
     st.session_state.db = firestore_db
 
-    # Center the logo image
     col1, col2, col3 = st.columns([3, 4, 3])
 
     with col1:
