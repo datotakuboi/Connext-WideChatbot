@@ -258,6 +258,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
     for attempt in range(max_attempts):
         try:
             response = generate_response(user_question, context, fine_tuned_knowledge)
+            st.write(f"Response Attempt {attempt+1}: {response}")  # Debugging line
             parsed_result, response_json_valid = extract_and_parse_json(response)
             if response_json_valid and is_expected_json_content(parsed_result):
                 return parsed_result
@@ -414,7 +415,8 @@ def app():
                                             st.rerun()
 
     if st.session_state["request_fine_tuned_answer"]:
-        fine_tuned_result = try_get_answer(st.session_state.chat_history[-1]['user_question'], context="", fine_tuned_knowledge=True)
+        with st.spinner("Generating fine-tuned answer..."):
+            fine_tuned_result = try_get_answer(st.session_state.chat_history[-1]['user_question'], context="", fine_tuned_knowledge=True)
         if fine_tuned_result:
             st.session_state.chat_history[-1]["response"] = fine_tuned_result.strip()
             st.session_state.show_fine_tuned_expander = False
