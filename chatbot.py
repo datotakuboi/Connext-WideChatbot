@@ -160,7 +160,7 @@ def get_generative_model(response_mime_type = "text/plain"):
     model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h', generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
     return model
 
-def generate_response(question, context, fine_tuned_knowledge = False):
+def generate_response(question, context, fine_tuned_knowledge = False, response_mime_type = "application/json"):
     prompt_using_fine_tune_knowledge = f"""
     Based on your base or fine-tuned knowledge, can you answer the the following question?
 
@@ -195,12 +195,21 @@ def generate_response(question, context, fine_tuned_knowledge = False):
     """
 
     prompt = prompt_using_fine_tune_knowledge if fine_tuned_knowledge else prompt_with_context
-    model = get_generative_model("text/plain" if fine_tuned_knowledge else "application/json")
+    model = get_generative_model(response_mime_type)
     
     if model is None:
         return "Failed to load generative model."
 
-    return model.generate_content(prompt).text
+    response = model.generate_content(prompt)
+    st.write(f"Response: {response}")  # Log the response for debugging
+
+    if response_mime_type == "application/json":
+        try:
+            return json.loads(response.text)
+        except json.JSONDecodeError:
+            st.error("Failed to parse JSON response.")
+            return None
+    return response.text
 
 def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
     parsed_result = {}
@@ -218,6 +227,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
                 max_attempts -= 1
                 continue
 
+            st.write(f"Response: {response}")  # Log the response for debugging
             parsed_result, response_json_valid = extract_and_parse_json(response)
             if not response_json_valid:
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
@@ -233,10 +243,11 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
             break
     else:
         try:
-            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
+            parsed_result = generate_response(user_question, context , fine_tuned_knowledge, "text/plain")
         except Exception as e:
             st.toast(f"Failed to create a response for your query.")
 
+    st.write(f"Parsed Result: {parsed_result}")  # Log the parsed result for debugging
     return parsed_result
 
 def user_input(user_question, api_key):
@@ -351,6 +362,9 @@ def app():
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
+
+    if "selected_retrievers" not in st.session_state:
+        st.session_state["selected_retrievers"] = []
 
     if "answer" not in st.session_state:
         st.session_state["answer"] = ""
