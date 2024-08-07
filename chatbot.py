@@ -161,7 +161,7 @@ def get_generative_model(response_mime_type = "text/plain"):
     model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h', generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
     return model
 
-def generate_response(question, context, fine_tuned_knowledge = False):
+def generate_response(question, context, fine_tuned_knowledge=False):
     prompt_using_fine_tune_knowledge = f"""
     Based on your base or fine-tuned knowledge, can you answer the the following question?
 
@@ -197,13 +197,19 @@ def generate_response(question, context, fine_tuned_knowledge = False):
 
     prompt = prompt_using_fine_tune_knowledge if fine_tuned_knowledge else prompt_with_context
     model = get_generative_model("text/plain" if fine_tuned_knowledge else "application/json")
-    
+
     if model is None:
         return "Failed to load generative model."
 
-    return model.generate_content(prompt).text
+    response = model.generate_content(prompt).text
 
-def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
+    try:
+        response_json = json.loads(response)
+        return response_json
+    except json.JSONDecodeError:
+        return response
+
+def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
     parsed_result = {}
     if not fine_tuned_knowledge:
         response_json_valid = False
@@ -213,28 +219,37 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
             response = ""
 
             try:
-                response = generate_response(user_question, context , fine_tuned_knowledge)
+                response = generate_response(user_question, context, fine_tuned_knowledge)
             except Exception as e:
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
 
-            parsed_result, response_json_valid = extract_and_parse_json(response)
+            if isinstance(response, dict):
+                parsed_result = response
+                response_json_valid = True
+            else:
+                parsed_result, response_json_valid = extract_and_parse_json(response)
+
             if not response_json_valid:
                 st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
 
-            is_expected_json = is_expected_json_content(parsed_result)  
+            is_expected_json = is_expected_json_content(parsed_result)
             if not is_expected_json:
-                st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
+                st.toast(f"Successfully validated and parsed json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
-            
+
             break
     else:
         try:
-            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
+            response = generate_response(user_question, context, fine_tuned_knowledge)
+            if isinstance(response, dict):
+                parsed_result = response
+            else:
+                parsed_result = {"Answer": response.strip()}
         except Exception as e:
             st.toast(f"Failed to create a response for your query.")
 
@@ -246,12 +261,13 @@ def user_input(user_question, api_key):
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
         new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
         docs = new_db.similarity_search(user_question)
-        
+
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
         parsed_result = try_get_answer(user_question, context)
-    
+
     return parsed_result
+
 
 def app():
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
