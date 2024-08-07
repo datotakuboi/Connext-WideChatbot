@@ -414,7 +414,7 @@ def app():
             raw_text = get_pdf_text(all_files)
             text_chunks = get_text_chunks(raw_text)
             get_vector_store(text_chunks, google_ai_api_key)
-            st.success("All documents processed successfully")
+            st.success("")
     else:
         st.toast("Failed to process the documents", icon="💥")
 
