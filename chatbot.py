@@ -1,18 +1,15 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import firebase_admin
-from firebase_admin import firestore
+from firebase_admin import credentials, firestore
 from google.cloud import storage
-from firebase_admin import credentials
-from firebase_admin import auth
-from dotenv import load_dotenv
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from urllib.parse import urlparse, unquote
 import os
 import json
 import requests
 import tempfile
-import datetime
-import pytz
 from functools import lru_cache
 from pdfminer.high_level import extract_text
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -22,21 +19,25 @@ from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-
-### Functions: Start ###
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
 
-@st.dialog("Google Consent Authentication Link")
-def google_oauth_link(flow):
-    auth_url, _ = flow.authorization_url(redirect_uris=st.secrets["web"]["redirect_uris"], prompt='consent')
-    st.write("Please go to this URL and authorize access:")
-    st.markdown(f"[Sign in with Google]({auth_url})", unsafe_allow_html=True)
-    code = st.text_input("Enter the authorization code:")
-    return code
+# Initialize Firebase Admin SDK
+def initialize_firebase():
+    if not firebase_admin._apps:
+        try:
+            cred = credentials.Certificate(dict(st.secrets["service_account"]))
+            firebase_admin.initialize_app(cred)
+        except Exception as e:
+            st.error(f"Failed to initialize Firebase: {e}")
+
+# Check if Firestore client is correctly initialized
+def initialize_firestore():
+    try:
+        firestore_db = firestore.client()
+        st.session_state.db = firestore_db
+    except Exception as e:
+        st.error(f"Failed to initialize Firestore client: {e}")
 
 @lru_cache(maxsize=32)
 def fetch_token_data():
@@ -256,17 +257,14 @@ def app():
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
 
     # Initialize Firebase Admin SDK
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(st.secrets["service_account"])
-        firebase_admin.initialize_app(cred)
+    initialize_firebase()
 
     # Load the credentials into the session state
     if "connext_chatbot_admin_credentials" not in st.session_state:
         st.session_state["connext_chatbot_admin_credentials"] = st.secrets["service_account"]
 
-    # Get Firestore client
-    firestore_db = firestore.client()
-    st.session_state.db = firestore_db
+    # Initialize Firestore
+    initialize_firestore()
 
     # Center the logo image
     col1, col2, col3 = st.columns([3, 4, 3])
@@ -280,7 +278,7 @@ def app():
     with col3:
         st.write(' ')
 
-    st.markdown('## Welcome to :blue[Connext Chatbot] :robot_face:')
+    st.markdown('## Welcome to :blue[Connext Chatbot]')
 
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
@@ -295,9 +293,49 @@ def app():
 
     def display_chat_history():
         with chat_history_placeholder.container():
+            st.markdown("""
+                <style>
+                .user-message {
+                    background-color: #DCF8C6;
+                    color: #000000;
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin-bottom: 5px;
+                    width: fit-content;
+                    max-width: 70%;
+                    word-wrap: break-word;
+                    font-size: 16px;
+                }
+                .bot-message {
+                    background-color: #F1F0F0;
+                    color: #000000;
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin-bottom: 5px;
+                    width: fit-content;
+                    max-width: 70%;
+                    word-wrap: break-word;
+                    font-size: 16px;
+                }
+                .user-message-container {
+                    display: flex;
+                    justify-content: flex-end;
+                }
+                .bot-message-container {
+                    display: flex;
+                    justify-content: flex-start;
+                }
+                </style>
+            """, unsafe_allow_html=True)
             for chat in st.session_state.chat_history:
-                st.markdown(f"🧑 **You:** {chat['question']}")
-                st.markdown(f"🤖 **Bot:** {chat['answer']['Answer']}")
+                st.markdown(f"""
+                <div class="user-message-container">
+                    <div class="user-message">{chat['question']}</div>
+                </div>
+                <div class="bot-message-container">
+                    <div class="bot-message">{chat['answer']['Answer']}</div>
+                </div>
+                """, unsafe_allow_html=True)
 
     display_chat_history()
 
@@ -307,13 +345,10 @@ def app():
 
     if clear_history_button:
         st.session_state.chat_history = []
-        display_chat_history()
+        st.rerun()
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
-
-    if "selected_retrievers" not in st.session_state:
-        st.session_state["selected_retrievers"] = []
 
     if "answer" not in st.session_state:
         st.session_state["answer"] = ""
@@ -366,32 +401,22 @@ def app():
                 st.toast("Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False
 
-    with st.sidebar:
-        st.title("PDF Documents:")
-        for idx, doc in enumerate(docs, start=1):
-            retriever = doc.to_dict()
-            retriever['id'] = doc.id
-            retriever_name = retriever['retriever_name']
-            retriever_description = retriever['retriever_description']
-            with st.expander(retriever_name):
-                st.markdown(f"**Description:** {retriever_description}")
-                file_path, file_name = download_file_to_temp(retriever['document'])
-                st.markdown(f"_**File Name**_: {file_name}")
-                retriever["file_path"] = file_path 
-                st.session_state["retrievers"][retriever_name] = retriever
-        st.title("PDF Document Selection:")
-        st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))  
-        
-        if st.button("Submit & Process", key="process_button"):
-            if google_ai_api_key:
-                with st.spinner("Processing..."):
-                    selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
-                    raw_text = get_pdf_text(selected_files)
-                    text_chunks = get_text_chunks(raw_text)
-                    get_vector_store(text_chunks, google_ai_api_key)
-                    st.success("Done")
-            else:
-                st.toast("Failed to process the documents", icon="💥")
+    # Process all documents instead of selecting specific ones
+    all_files = []
+    for doc in docs:
+        retriever = doc.to_dict()
+        retriever['id'] = doc.id
+        file_path, file_name = download_file_to_temp(retriever['document'])
+        all_files.append(file_path)
+
+    if google_ai_api_key:
+        with st.spinner("Processing all documents..."):
+            raw_text = get_pdf_text(all_files)
+            text_chunks = get_text_chunks(raw_text)
+            get_vector_store(text_chunks, google_ai_api_key)
+            st.success("All documents processed successfully")
+    else:
+        st.toast("Failed to process the documents", icon="💥")
 
 if __name__ == "__main__":
     app()
