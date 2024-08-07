@@ -1,18 +1,15 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import firebase_admin
-from firebase_admin import firestore
+from firebase_admin import credentials, firestore
 from google.cloud import storage
-from firebase_admin import credentials
-from firebase_admin import auth
-from dotenv import load_dotenv
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from urllib.parse import urlparse, unquote
 import os
 import json
 import requests
 import tempfile
-import datetime
-import pytz
 from functools import lru_cache
 from pdfminer.high_level import extract_text
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -22,21 +19,29 @@ from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-
-### Functions: Start ###
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
 
-@st.dialog("Google Consent Authentication Link")
-def google_oauth_link(flow):
-    auth_url, _ = flow.authorization_url(redirect_uris=st.secrets["web"]["redirect_uris"], prompt='consent')
-    st.write("Please go to this URL and authorize access:")
-    st.markdown(f"[Sign in with Google]({auth_url})", unsafe_allow_html=True)
-    code = st.text_input("Enter the authorization code:")
-    return code
+# Initialize Firebase Admin SDK
+def initialize_firebase():
+    if not firebase_admin._apps:
+        try:
+            cred = credentials.Certificate(dict(st.secrets["service_account"]))
+            firebase_admin.initialize_app(cred)
+            st.success("Firebase initialized successfully")
+        except Exception as e:
+            st.error(f"Failed to initialize Firebase: {e}")
+    else:
+        st.success("Firebase already initialized")
+
+# Check if Firestore client is correctly initialized
+def initialize_firestore():
+    try:
+        firestore_db = firestore.client()
+        st.session_state.db = firestore_db
+        st.success("Firestore client initialized successfully")
+    except Exception as e:
+        st.error(f"Failed to initialize Firestore client: {e}")
 
 @lru_cache(maxsize=32)
 def fetch_token_data():
@@ -69,66 +74,16 @@ def load_creds():
     token_doc, doc_id = fetch_token_data()
 
     if token_doc:
-        account = token_doc.get("account")
-        client_id = token_doc.get("client_id")
-        client_secret = token_doc.get("client_secret")
-        expiry = token_doc.get("expiry")
-        refresh_token = token_doc.get("refresh_token")
-        scopes = token_doc.get("scopes")
-        token = token_doc.get("token")
-        token_uri = token_doc.get("token_uri")
-        universe_domain = token_doc.get("universe_domain")
+        creds = Credentials.from_authorized_user_info(token_doc, SCOPES)
 
-        st.session_state['account'] = account
-        st.session_state['client_id'] = client_id
-        st.session_state['client_secret'] = client_secret
-        st.session_state['expiry'] = expiry
-        st.session_state['refresh_token'] = refresh_token
-        st.session_state['scopes'] = scopes
-        st.session_state['token'] = token
-        st.session_state['token_uri'] = token_uri
-        st.session_state['universe_domain'] = universe_domain
-
-        temp_dir = tempfile.mkdtemp()
-        token_file_path = os.path.join(temp_dir, 'token.json')
-        with open(token_file_path, 'w') as token_file:
-            json.dump(token_doc, token_file)
-
-        creds = Credentials.from_authorized_user_file(token_file_path, scopes)
-
-        if creds.expired:
-            token_doc, _ = fetch_token_data()
-            if token_doc:
-                new_refresh_token = token_doc.get("refresh_token")
-                if creds.refresh_token and creds.refresh_token == new_refresh_token:
-                    st.toast("Refreshing token...")
-                    creds.refresh(Request())
-                    new_token_data = {
-                        "account": account,
-                        "client_id": client_id,
-                        "client_secret": client_secret,
-                        "expiry": creds.expiry.isoformat() if creds.expiry else expiry,
-                        "refresh_token": creds.refresh_token,
-                        "scopes": scopes,
-                        "token": creds.token,
-                        "token_uri": token_uri,
-                        "universe_domain": universe_domain
-                    }
-                    
-                    st.session_state.db.collection('Token').document(doc_id).set(new_token_data)
-                    st.session_state.update(new_token_data)
-                    with open(token_file_path, 'w') as token_file:
-                        json.dump(new_token_data, token_file)
-                else:
-                    st.error("Refresh token mismatch or missing. Please log in again.")
-                    return None
-            else:
-                st.error("Failed to re-fetch token data from Firestore.")
-                return None
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            st.session_state.db.collection('Token').document(doc_id).set(creds.to_json())
     else:
         return None
 
     return creds
+
 @lru_cache(maxsize=32)
 def download_file_to_temp(url):
     # Create a temporary directory
@@ -306,17 +261,14 @@ def app():
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
 
     # Initialize Firebase Admin SDK
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(st.secrets["service_account"])
-        firebase_admin.initialize_app(cred)
+    initialize_firebase()
 
     # Load the credentials into the session state
     if "connext_chatbot_admin_credentials" not in st.session_state:
         st.session_state["connext_chatbot_admin_credentials"] = st.secrets["service_account"]
 
-    # Get Firestore client
-    firestore_db = firestore.client()
-    st.session_state.db = firestore_db
+    # Initialize Firestore
+    initialize_firestore()
 
     # Center the logo image
     col1, col2, col3 = st.columns([3, 4, 3])
