@@ -280,7 +280,7 @@ def app():
     with col3:
         st.write(' ')
 
-    st.markdown('## Welcome to :blue[Connext Chatbot] :robot_face:')
+    st.markdown('## Welcome to :blue[Connext Chatbot]')
 
     retrievers_ref = st.session_state.db.collection('Retrievers')
     docs = retrievers_ref.stream()
@@ -332,10 +332,10 @@ def app():
             for chat in st.session_state.chat_history:
                 st.markdown(f"""
                 <div class="user-message-container">
-                    <div class="user-message">🧑 **You:** {chat['question']}</div>
+                    <div class="user-message">{chat['question']}</div>
                 </div>
                 <div class="bot-message-container">
-                    <div class="bot-message">🤖 **Bot:** {chat['answer']['Answer']}</div>
+                    <div class="bot-message">{chat['answer']['Answer']}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -347,13 +347,10 @@ def app():
 
     if clear_history_button:
         st.session_state.chat_history = []
-        display_chat_history()
+        st.rerun()
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
-
-    if "selected_retrievers" not in st.session_state:
-        st.session_state["selected_retrievers"] = []
 
     if "answer" not in st.session_state:
         st.session_state["answer"] = ""
@@ -406,32 +403,22 @@ def app():
                 st.toast("Failed to generate a fine-tuned answer.")
         st.session_state["request_fine_tuned_answer"] = False
 
-    with st.sidebar:
-        st.title("PDF Documents:")
-        for idx, doc in enumerate(docs, start=1):
-            retriever = doc.to_dict()
-            retriever['id'] = doc.id
-            retriever_name = retriever['retriever_name']
-            retriever_description = retriever['retriever_description']
-            with st.expander(retriever_name):
-                st.markdown(f"**Description:** {retriever_description}")
-                file_path, file_name = download_file_to_temp(retriever['document'])
-                st.markdown(f"_**File Name**_: {file_name}")
-                retriever["file_path"] = file_path 
-                st.session_state["retrievers"][retriever_name] = retriever
-        st.title("PDF Document Selection:")
-        st.session_state["selected_retrievers"] = st.multiselect("Select Documents", list(st.session_state["retrievers"].keys()))  
-        
-        if st.button("Submit & Process", key="process_button"):
-            if google_ai_api_key:
-                with st.spinner("Processing..."):
-                    selected_files = [st.session_state["retrievers"][name]["file_path"] for name in st.session_state["selected_retrievers"]]
-                    raw_text = get_pdf_text(selected_files)
-                    text_chunks = get_text_chunks(raw_text)
-                    get_vector_store(text_chunks, google_ai_api_key)
-                    st.success("Done")
-            else:
-                st.toast("Failed to process the documents", icon="💥")
+    # Process all documents instead of selecting specific ones
+    all_files = []
+    for doc in docs:
+        retriever = doc.to_dict()
+        retriever['id'] = doc.id
+        file_path, file_name = download_file_to_temp(retriever['document'])
+        all_files.append(file_path)
+
+    if google_ai_api_key:
+        with st.spinner("Processing all documents..."):
+            raw_text = get_pdf_text(all_files)
+            text_chunks = get_text_chunks(raw_text)
+            get_vector_store(text_chunks, google_ai_api_key)
+            st.success("All documents processed successfully")
+    else:
+        st.toast("Failed to process the documents", icon="💥")
 
 if __name__ == "__main__":
     app()
