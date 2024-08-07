@@ -26,6 +26,9 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 
+# Add import for dict()
+from collections import defaultdict
+
 ### Functions: Start ###
 
 SCOPES = ['https://www.googleapis.com/auth/generative-language.retriever']
@@ -99,7 +102,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if start_index == -1 or end_index == -1 or end_index < start_index:
+    if (start_index == -1 or end_index == -1 or end_index < start_index):
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -140,7 +143,7 @@ def get_vector_store(text_chunks, api_key):
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
 
-def get_generative_model(response_mime_type = "text/plain"):
+def get_generative_model(response_mime_type="text/plain"):
     generation_config = {
         "temperature": 0.4,
         "top_p": 1,
@@ -160,9 +163,9 @@ def get_generative_model(response_mime_type = "text/plain"):
     model = genai.GenerativeModel('tunedModels/connext-wide-chatbot-ddal5ox9d38h', generation_config=generation_config) if response_mime_type == "text/plain" else genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
     return model
 
-def generate_response(question, context, fine_tuned_knowledge = False):
+def generate_response(question, context, fine_tuned_knowledge=False):
     prompt_using_fine_tune_knowledge = f"""
-    Based on your base or fine-tuned knowledge, can you answer the the following question?
+    Based on your base or fine-tuned knowledge, can you answer the following question?
 
     --------------------
 
@@ -172,7 +175,6 @@ def generate_response(question, context, fine_tuned_knowledge = False):
     --------------------
 
     Answer:
-
     """
     prompt_with_context = f"""
     Answer the question below as detailed as possible from the provided context below, make sure to provide all the details but if the answer is not in
@@ -190,7 +192,7 @@ def generate_response(question, context, fine_tuned_knowledge = False):
     Provide your answer in a json format following the structure below:
     {{
         "Is_Answer_In_Context": <boolean>,
-        "Answer": <answer (string)>,
+        "Answer": <answer (string)>
     }}
     """
 
@@ -202,7 +204,7 @@ def generate_response(question, context, fine_tuned_knowledge = False):
 
     return model.generate_content(prompt).text
 
-def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
+def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
     parsed_result = {}
     if not fine_tuned_knowledge:
         response_json_valid = False
@@ -212,7 +214,7 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
             response = ""
 
             try:
-                response = generate_response(user_question, context , fine_tuned_knowledge)
+                response = generate_response(user_question, context, fine_tuned_knowledge)
             except Exception as e:
                 st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
@@ -226,14 +228,14 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
 
             is_expected_json = is_expected_json_content(parsed_result)  
             if not is_expected_json:
-                st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
+                st.toast(f"Successfully validated and parsed json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
                 max_attempts -= 1
                 continue
             
             break
     else:
         try:
-            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
+            parsed_result = generate_response(user_question, context, fine_tuned_knowledge)
         except Exception as e:
             st.toast(f"Failed to create a response for your query.")
 
