@@ -308,6 +308,9 @@ def user_input(user_question, api_key):
 
     return parsed_result
 
+if 'user_question' not in st.session_state:
+    st.session_state.user_question = ""
+
 def app():
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
 
