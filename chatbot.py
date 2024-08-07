@@ -346,61 +346,86 @@ def app():
 
     chat_history_placeholder = st.empty()
 
-    def display_chat_history():
-        with chat_history_placeholder.container():
-            st.markdown("""
-                <style>
-                .user-message {
-                    background-color: #DCF8C6;
-                    color: #000000;
-                    padding: 15px;
-                    border-radius: 10px;
-                    margin-bottom: 5px;
-                    width: fit-content;
-                    max-width: 70%;
-                    word-wrap: break-word;
-                    font-size: 16px;
-                }
-                .bot-message {
-                    background-color: #F1F0F0;
-                    color: #000000;
-                    padding: 15px;
-                    border-radius: 10px;
-                    margin-bottom: 5px;
-                    width: fit-content;
-                    max-width: 70%;
-                    word-wrap: break-word;
-                    font-size: 16px;
-                }
-                .user-message-container {
-                    display: flex;
-                    justify-content: flex-end;
-                }
-                .bot-message-container {
-                    display: flex;
-                    justify-content: flex-start;
-                }
-                </style>
+    # Function to display chat history
+def display_chat_history():
+    with chat_history_placeholder.container():
+        st.markdown("""
+            <style>
+            .user-message {
+                background-color: #DCF8C6;
+                color: #000000;
+                padding: 15px;
+                border-radius: 10px;
+                margin-bottom: 5px;
+                width: fit-content;
+                max-width: 70%;
+                word-wrap: break-word;
+                font-size: 16px;
+            }
+            .bot-message {
+                background-color: #F1F0F0;
+                color: #000000;
+                padding: 15px;
+                border-radius: 10px;
+                margin-bottom: 5px;
+                width: fit-content;
+                max-width: 70%;
+                word-wrap: break-word;
+                font-size: 16px;
+            }
+            .user-message-container {
+                display: flex;
+                justify-content: flex-end;
+            }
+            .bot-message-container {
+                display: flex;
+                justify-content: flex-start;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        for chat in st.session_state.chat_history:
+            st.markdown(f"""
+            <div class="user-message-container">
+                <div class="user-message">{chat['question']}</div>
+            </div>
+            <div class="bot-message-container">
+                <div class="bot-message">{chat['answer']['Answer']}</div>
+            </div>
             """, unsafe_allow_html=True)
-            for chat in st.session_state.chat_history:
-                st.markdown(f"""
-                <div class="user-message-container">
-                    <div class="user-message">{chat['question']}</div>
-                </div>
-                <div class="bot-message-container">
-                    <div class="bot-message">{chat['answer']['Answer']}</div>
-                </div>
-                """, unsafe_allow_html=True)
 
-    display_chat_history()
+# Initialize chat history if not in session state
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
 
-    user_question = st.text_area("Ask a Question", key="user_question")
-    submit_button = st.button("Submit", key="submit_button")
-    clear_history_button = st.button("Clear Chat History")
+# Placeholder for chat history
+chat_history_placeholder = st.empty()
 
-    if clear_history_button:
-        st.session_state.chat_history = []
-        st.rerun()
+# Function to handle user input
+def handle_user_input():
+    google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
+    user_question = st.session_state.user_question  # Access the user input from session state
+    if user_question and google_ai_api_key:
+        parsed_result = user_input(user_question, google_ai_api_key)
+        st.session_state.parsed_result = parsed_result
+        if "Answer" in parsed_result:
+            st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
+            st.session_state.user_question = ""  # Clear the text input
+        else:
+            st.toast("Failed to get a valid response from the model.")
+        display_chat_history()
+
+# Display chat history
+display_chat_history()
+
+# Text area for user input with session state key
+user_question = st.text_area("Ask a Question", key="user_question")
+submit_button = st.button("Submit", on_click=handle_user_input)
+clear_history_button = st.button("Clear Chat History")
+
+# Handle clear history button
+if clear_history_button:
+    st.session_state.chat_history = []
+    st.experimental_rerun()  # Rerun to update the interface
 
     if "retrievers" not in st.session_state:
         st.session_state["retrievers"] = {}
