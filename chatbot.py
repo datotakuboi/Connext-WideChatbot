@@ -417,7 +417,7 @@ def app():
                 display_chat_history()
             else:
                 st.toast("Failed to get a valid response from the model.")
-            user_question = ""
+            st.session_state.user_question = ""
 
     display_chat_history()
 
