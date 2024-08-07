@@ -410,13 +410,9 @@ def app():
         all_files.append(file_path)
 
     if google_ai_api_key:
-        with st.spinner("Processing all documents..."):
-            raw_text = get_pdf_text(all_files)
-            text_chunks = get_text_chunks(raw_text)
-            get_vector_store(text_chunks, google_ai_api_key)
-            st.success("All documents processed successfully")
-    else:
-        st.toast("Failed to process the documents", icon="💥")
+        raw_text = get_pdf_text(all_files)
+        text_chunks = get_text_chunks(raw_text)
+        get_vector_store(text_chunks, google_ai_api_key)
 
 if __name__ == "__main__":
     app()
