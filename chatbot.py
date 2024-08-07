@@ -394,10 +394,7 @@ def app():
 
     display_chat_history()
 
-    if "user_question" not in st.session_state:
-        st.session_state["user_question"] = ""
-
-    user_question = st.text_area("Ask a Question", key="user_question")
+    user_question = st.text_area("Ask a Question", key="user_question",)
     submit_button = st.button("Submit", key="submit_button")
     clear_history_button = st.button("Clear Chat History")
 
@@ -417,8 +414,7 @@ def app():
             st.session_state.parsed_result = parsed_result
             if "Answer" in parsed_result:
                 st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
-                st.session_state.user_question = ""  # Clear the text input field
-                st.experimental_rerun()  # Update the UI and display chat history
+                display_chat_history()
             else:
                 st.toast("Failed to get a valid response from the model.")
 
