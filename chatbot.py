@@ -256,44 +256,40 @@ def generate_response(question, context, fine_tuned_knowledge = False):
 
 def try_get_answer(user_question, context="", fine_tuned_knowledge = False):
     parsed_result = {}
-    if not fine_tuned_knowledge:
-        response_json_valid = False
-        is_expected_json = False
-        max_attempts = 3
-        while not response_json_valid and max_attempts > 0:
-            response = ""
+    response_json_valid = False
+    is_expected_json = False
+    max_attempts = 3
+    while not response_json_valid and max_attempts > 0:
+        response = ""
 
-            try:
-                response = generate_response(user_question, context , fine_tuned_knowledge)
-            except Exception as e:
-                st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
-                max_attempts -= 1
-                continue
-
-            parsed_result, response_json_valid = extract_and_parse_json(response)
-            if not response_json_valid:
-                st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
-                max_attempts -= 1
-                continue
-
-            is_expected_json = is_expected_json_content(parsed_result)  
-            if not is_expected_json:
-                st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
-                max_attempts -= 1
-                continue
-            
-            break
-    else:
         try:
-            parsed_result = generate_response(user_question, context , fine_tuned_knowledge)
+            response = generate_response(user_question, context, fine_tuned_knowledge)
         except Exception as e:
-            st.toast(f"Failed to create a response for your query.")
+            st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
+            max_attempts -= 1
+            continue
+
+        if fine_tuned_knowledge:
+            return response
+
+        parsed_result, response_json_valid = extract_and_parse_json(response)
+        if not response_json_valid:
+            st.toast(f"Failed to validate and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
+            max_attempts -= 1
+            continue
+
+        is_expected_json = is_expected_json_content(parsed_result)  
+        if not is_expected_json:
+            st.toast(f"Successfully validated and parse json for your query.\n Trying again... Retries left: {max_attempts} attempt/s")
+            max_attempts -= 1
+            continue
+        
+        break
 
     return parsed_result
 
 def user_input(user_question, api_key):
     with st.spinner("Processing..."):
-        st.session_state.show_fine_tuned_expander = True
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
         new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
         docs = new_db.similarity_search(user_question)
@@ -303,8 +299,7 @@ def user_input(user_question, api_key):
         parsed_result = try_get_answer(user_question, context)
     
     if not parsed_result.get("Is_Answer_In_Context", False):
-        st.session_state.show_fine_tuned_expander = False
-        st.session_state.request_fine_tuned_answer = True
+        parsed_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
 
     return parsed_result
 
@@ -408,15 +403,6 @@ def app():
     if "answer" not in st.session_state:
         st.session_state["answer"] = ""
 
-    if "request_fine_tuned_answer" not in st.session_state:
-        st.session_state["request_fine_tuned_answer"] = False
-
-    if 'fine_tuned_answer_expander_state' not in st.session_state:
-        st.session_state.fine_tuned_answer_expander_state = False
-
-    if 'show_fine_tuned_expander' not in st.session_state:
-        st.session_state.show_fine_tuned_expander = False
-
     if submit_button:
         if user_question and google_ai_api_key:
             parsed_result = user_input(user_question, google_ai_api_key)
@@ -424,23 +410,10 @@ def app():
             if "Answer" in parsed_result:
                 st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
                 display_chat_history()
-                if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
-                    st.session_state.show_fine_tuned_expander = True
             else:
                 st.toast("Failed to get a valid response from the model.")
 
     display_chat_history()
-
-    if st.session_state["request_fine_tuned_answer"]:
-        if st.session_state.chat_history:
-            with st.spinner("Generating fine-tuned answer..."):
-                fine_tuned_result = try_get_answer(st.session_state.chat_history[-1]['question'], context="", fine_tuned_knowledge=True)
-            if fine_tuned_result:
-                st.session_state.chat_history[-1]['answer'] = {"Answer": fine_tuned_result.strip()}
-                display_chat_history()
-            else:
-                st.toast("Failed to generate a fine-tuned answer.")
-        st.session_state["request_fine_tuned_answer"] = False
 
     # Process all documents instead of selecting specific ones
     all_files = []
