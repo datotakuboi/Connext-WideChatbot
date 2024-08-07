@@ -70,11 +70,62 @@ def load_creds():
     token_doc, doc_id = fetch_token_data()
 
     if token_doc:
-        creds = Credentials.from_authorized_user_info(token_doc, SCOPES)
+        account = token_doc.get("account")
+        client_id = token_doc.get("client_id")
+        client_secret = token_doc.get("client_secret")
+        expiry = token_doc.get("expiry")
+        refresh_token = token_doc.get("refresh_token")
+        scopes = token_doc.get("scopes")
+        token = token_doc.get("token")
+        token_uri = token_doc.get("token_uri")
+        universe_domain = token_doc.get("universe_domain")
 
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            st.session_state.db.collection('Token').document(doc_id).set(creds.to_json())
+        st.session_state['account'] = account
+        st.session_state['client_id'] = client_id
+        st.session_state['client_secret'] = client_secret
+        st.session_state['expiry'] = expiry
+        st.session_state['refresh_token'] = refresh_token
+        st.session_state['scopes'] = scopes
+        st.session_state['token'] = token
+        st.session_state['token_uri'] = token_uri
+        st.session_state['universe_domain'] = universe_domain
+
+        temp_dir = tempfile.mkdtemp()
+        token_file_path = os.path.join(temp_dir, 'token.json')
+        with open(token_file_path, 'w') as token_file:
+            json.dump(token_doc, token_file)
+
+        creds = Credentials.from_authorized_user_file(token_file_path, scopes)
+
+        if creds.expired:
+            token_doc, _ = fetch_token_data()
+            if token_doc:
+                new_refresh_token = token_doc.get("refresh_token")
+                if creds.refresh_token and creds.refresh_token == new_refresh_token:
+                    st.toast("Refreshing token...")
+                    creds.refresh(Request())
+                    new_token_data = {
+                        "account": account,
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "expiry": creds.expiry.isoformat() if creds.expiry else expiry,
+                        "refresh_token": creds.refresh_token,
+                        "scopes": scopes,
+                        "token": creds.token,
+                        "token_uri": token_uri,
+                        "universe_domain": universe_domain
+                    }
+                    
+                    st.session_state.db.collection('Token').document(doc_id).set(new_token_data)
+                    st.session_state.update(new_token_data)
+                    with open(token_file_path, 'w') as token_file:
+                        json.dump(new_token_data, token_file)
+                else:
+                    st.error("Refresh token mismatch or missing. Please log in again.")
+                    return None
+            else:
+                st.error("Failed to re-fetch token data from Firestore.")
+                return None
     else:
         return None
 
