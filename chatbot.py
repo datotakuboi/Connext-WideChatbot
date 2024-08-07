@@ -308,6 +308,10 @@ def user_input(user_question, api_key):
 
     return parsed_result
 
+# Ensure user_question is in session state
+if 'user_question' not in st.session_state:
+    st.session_state.user_question = ""
+
 def app():
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
 
@@ -409,14 +413,15 @@ def app():
         st.session_state["answer"] = ""
 
     if submit_button:
-        if user_question and google_ai_api_key:
-            parsed_result = user_input(user_question, google_ai_api_key)
+        if st.session_state.user_question and google_ai_api_key:
+            parsed_result = user_input(st.session_state.user_question, google_ai_api_key)
             st.session_state.parsed_result = parsed_result
             if "Answer" in parsed_result:
-                st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
+                st.session_state.chat_history.append({"question": st.session_state.user_question, "answer": parsed_result})
                 display_chat_history()
             else:
                 st.toast("Failed to get a valid response from the model.")
+            st.session_state.user_question = ""  # Clear the text input
 
     display_chat_history()
 
