@@ -214,7 +214,7 @@ def get_generative_model(response_mime_type = "text/plain"):
 
 def generate_response(question, context, fine_tuned_knowledge = False):
     prompt_using_fine_tune_knowledge = f"""
-    Based on your base or fine-tuned knowledge, can you answer the the following question?
+    Based on your base or fine-tuned knowledge, can you answer the following question?
 
     --------------------
 
@@ -303,8 +303,8 @@ def user_input(user_question, api_key):
         parsed_result = try_get_answer(user_question, context)
     
     if not parsed_result.get("Is_Answer_In_Context", False):
-        st.session_state.show_fine_tuned_expander = False
-        st.session_state.request_fine_tuned_answer = True
+        st.toast("Generating fine-tuned response as the answer was not found in the context.")
+        parsed_result = try_get_answer(user_question, context, fine_tuned_knowledge=True)
 
     return parsed_result
 
@@ -424,23 +424,10 @@ def app():
             if "Answer" in parsed_result:
                 st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
                 display_chat_history()
-                if "Is_Answer_In_Context" in parsed_result and not parsed_result["Is_Answer_In_Context"]:
-                    st.session_state.show_fine_tuned_expander = True
             else:
                 st.toast("Failed to get a valid response from the model.")
 
     display_chat_history()
-
-    if st.session_state["request_fine_tuned_answer"]:
-        if st.session_state.chat_history:
-            with st.spinner("Generating fine-tuned answer..."):
-                fine_tuned_result = try_get_answer(st.session_state.chat_history[-1]['question'], context="", fine_tuned_knowledge=True)
-            if fine_tuned_result:
-                st.session_state.chat_history[-1]['answer'] = {"Answer": fine_tuned_result.strip()}
-                display_chat_history()
-            else:
-                st.toast("Failed to generate a fine-tuned answer.")
-        st.session_state["request_fine_tuned_answer"] = False
 
     # Process all documents instead of selecting specific ones
     all_files = []
