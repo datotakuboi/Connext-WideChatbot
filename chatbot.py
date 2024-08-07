@@ -47,7 +47,7 @@ def fetch_token_data():
         token_docs = token_ref.get()
         
         if not token_docs:
-            st.error("No token document found in Firestore.")
+            st.error("No token document found in Firestore.") 
             return None, None
         
         token_doc = None
@@ -415,6 +415,7 @@ def app():
             st.session_state.parsed_result = parsed_result
             if "Answer" in parsed_result:
                 st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
+                st.session_state.user_question = ""
                 display_chat_history()
             else:
                 st.toast("Failed to get a valid response from the model.")
