@@ -28,18 +28,14 @@ def initialize_firebase():
         try:
             cred = credentials.Certificate(dict(st.secrets["service_account"]))
             firebase_admin.initialize_app(cred)
-            st.success("Firebase initialized successfully")
         except Exception as e:
             st.error(f"Failed to initialize Firebase: {e}")
-    else:
-        st.success("Firebase already initialized")
 
 # Check if Firestore client is correctly initialized
 def initialize_firestore():
     try:
         firestore_db = firestore.client()
         st.session_state.db = firestore_db
-        st.success("Firestore client initialized successfully")
     except Exception as e:
         st.error(f"Failed to initialize Firestore client: {e}")
 
