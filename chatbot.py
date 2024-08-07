@@ -151,7 +151,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if start_index == -1 or end_index == -1 or end_index < start_index:
+    if (start_index == -1 or end_index == -1 or end_index < start_index):
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -414,9 +414,12 @@ def app():
             st.session_state.parsed_result = parsed_result
             if "Answer" in parsed_result:
                 st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
-                display_chat_history()
+                st.session_state.user_question = ""  # Clear the input field
+                st.experimental_rerun()  # Rerun to update the input field
             else:
                 st.toast("Failed to get a valid response from the model.")
+        else:
+            st.toast("Please enter a question.")
 
     display_chat_history()
 
