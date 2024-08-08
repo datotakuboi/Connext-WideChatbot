@@ -398,15 +398,19 @@ def app():
     user_question = st.chat_input("Ask a Question")
 
     if user_question:
-        google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
-        parsed_result = user_input(user_question, google_ai_api_key)
-        if "Answer" in parsed_result:
-            st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
-            display_chat_history()
+        # Check for casual greetings
+        if user_question.lower() in ["hey chatbot", "hello chatbot", "hi chatbot" "hello", "hi", "hey", "hello there", "hi there", "hey there"]:
+            greeting_response = "Hello! How can I assist you today?"
+            st.session_state.chat_history.append({"question": user_question, "answer": {"Answer": greeting_response}})
         else:
-            st.toast("Failed to get a valid response from the model.")
+            google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
+            parsed_result = user_input(user_question, google_ai_api_key)
+            if "Answer" in parsed_result:
+                st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
+            else:
+                st.toast("Failed to get a valid response from the model.")
 
-    display_chat_history()
+        display_chat_history()
 
     # Process all documents instead of selecting specific ones
     all_files = []
