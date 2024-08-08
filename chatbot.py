@@ -268,7 +268,8 @@ def try_get_answer(user_question, context="", fine_tuned_knowledge=False):
         response = ""
 
         try:
-            response = generate_response(user_question, context, fine_tuned_knowledge)
+            with st.spinner("Processing..."):
+                response = generate_response(user_question, context, fine_tuned_knowledge)
         except Exception as e:
             st.toast(f"Failed to create a response for your query.\n Error Code: {str(e)} \nTrying again... Retries left: {max_attempts} attempt/s")
             max_attempts -= 1
@@ -304,7 +305,7 @@ def user_input(user_question, api_key):
         parsed_result = try_get_answer(user_question, context)
 
     if not parsed_result.get("Is_Answer_In_Context", False):
-            st.spinner("Searching for a more accurate answer...")
+        with st.spinner("Generating fine-tuned response..."):
             parsed_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
 
     return parsed_result
