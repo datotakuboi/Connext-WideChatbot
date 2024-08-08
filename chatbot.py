@@ -305,7 +305,7 @@ def user_input(user_question, api_key):
         parsed_result = try_get_answer(user_question, context)
 
     if not parsed_result.get("Is_Answer_In_Context", False):
-        with st.spinner("Generating fine-tuned response..."):
+        with st.spinner("Processing..."):
             parsed_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
 
     return parsed_result
