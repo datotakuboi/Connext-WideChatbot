@@ -395,29 +395,16 @@ def app():
 
     display_chat_history()
 
-    user_question = st.text_input("Ask a Question", key="user_question",)
-    submit_button = st.button("Submit", key="submit_button")
-    clear_history_button = st.button("Clear Chat History")
+    user_question = st.chat_input("Ask a Question")
 
-    if clear_history_button:
-        st.session_state.chat_history = []
-        st.rerun()
-
-    if "retrievers" not in st.session_state:
-        st.session_state["retrievers"] = {}
-
-    if "answer" not in st.session_state:
-        st.session_state["answer"] = ""
-
-    if submit_button:
-        if user_question and google_ai_api_key:
-            parsed_result = user_input(user_question, google_ai_api_key)
-            st.session_state.parsed_result = parsed_result
-            if "Answer" in parsed_result:
-                st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
-                display_chat_history()
-            else:
-                st.toast("Failed to get a valid response from the model.")
+    if user_question:
+        google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
+        parsed_result = user_input(user_question, google_ai_api_key)
+        if "Answer" in parsed_result:
+            st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
+            display_chat_history()
+        else:
+            st.toast("Failed to get a valid response from the model.")
 
     display_chat_history()
 
