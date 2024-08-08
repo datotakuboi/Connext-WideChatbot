@@ -151,7 +151,7 @@ def extract_and_parse_json(text):
     start_index = text.find('{')
     end_index = text.rfind('}')
     
-    if start_index == -1 or end_index == -1 or end_index < start_index:
+    if (start_index == -1) or (end_index == -1) or (end_index < start_index):
         return None, False
 
     json_str = text[start_index:end_index + 1]
@@ -304,6 +304,7 @@ def user_input(user_question, api_key):
         parsed_result = try_get_answer(user_question, context)
 
     if not parsed_result.get("Is_Answer_In_Context", False):
+        with st.spinner("Processing..."):
             parsed_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
 
     return parsed_result
@@ -394,7 +395,8 @@ def app():
 
     display_chat_history()
 
-    user_question = st.text_area("Ask a Question", key="user_question",)
+    user_question_placeholder = st.empty()
+    user_question = user_question_placeholder.text_area("Ask a Question", key="user_question")
     submit_button = st.button("Submit", key="submit_button")
     clear_history_button = st.button("Clear Chat History")
 
@@ -415,6 +417,7 @@ def app():
             if "Answer" in parsed_result:
                 st.session_state.chat_history.append({"question": user_question, "answer": parsed_result})
                 display_chat_history()
+                user_question_placeholder.text_area("Ask a Question", value="", key="new_user_question")
             else:
                 st.toast("Failed to get a valid response from the model.")
 
