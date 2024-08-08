@@ -301,13 +301,21 @@ def user_input(user_question, api_key):
         
         context = "\n\n--------------------------\n\n".join([doc.page_content for doc in docs])
 
+        # Always get context-based response first
         parsed_result = try_get_answer(user_question, context)
 
-    if not parsed_result.get("Is_Answer_In_Context", False):
-        with st.spinner("Processing..."):
-            parsed_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
+        # Always get fine-tuned response regardless of context-based response
+        fine_tuned_result = try_get_answer(user_question, context="", fine_tuned_knowledge=True)
 
-    return parsed_result
+        # Combine the context-based response and fine-tuned response
+        combined_result = {
+            "context_answer": parsed_result.get("Answer", ""),
+            "fine_tuned_answer": fine_tuned_result.get("Answer", ""),
+            "Answer": fine_tuned_result.get("Answer", "")  # Prefer fine-tuned answer for display
+        }
+
+    return combined_result
+
 
 def app():
     google_ai_api_key = st.secrets["api_keys"]["GOOGLE_AI_STUDIO_API_KEY"]
